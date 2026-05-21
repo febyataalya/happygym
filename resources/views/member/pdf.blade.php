@@ -13,7 +13,10 @@
     </style>
 </head>
 <body>
-    <h2>Data Member Happy Gym</h2>
+    <h2>LAPORAN DATA MEMBER</h2>
+    @if(isset($filterString))
+        <p style="text-align: center; margin-top: -10px; font-size: 14px; color: #555;">{{ $filterString }}</p>
+    @endif
     <table>
         <thead>
             <tr>

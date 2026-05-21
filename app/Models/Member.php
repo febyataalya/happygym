@@ -42,4 +42,9 @@ class Member extends Authenticatable
     {
         return $this->hasMany(DataFisikMember::class, 'member_id', 'member_id')->orderBy('tanggal_pencatatan', 'desc');
     }
+
+    public function pembayarans()
+    {
+        return $this->hasMany(Pembayaran::class, 'member_id', 'member_id');
+    }
 }

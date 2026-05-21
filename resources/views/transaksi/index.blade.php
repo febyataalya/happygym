@@ -5,12 +5,6 @@
             <p class="text-gray-500 text-sm">Semua pembayaran otomatis melalui Midtrans.</p>
         </div>
         <div class="flex gap-3">
-            <a href="{{ route('transaksi.export.excel', request()->all()) }}" class="bg-[#2bc466] hover:bg-green-700 text-white font-bold py-2 px-6 rounded shadow-sm transition text-sm">
-                Export Excel (CSV)
-            </a>
-            <a href="{{ route('transaksi.export.pdf', request()->all()) }}" class="bg-[#e45151] hover:bg-red-700 text-white font-bold py-2 px-6 rounded shadow-sm transition text-sm">
-                Export PDF
-            </a>
         </div>
     </div>
 

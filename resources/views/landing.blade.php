@@ -255,9 +255,14 @@
                                                             
                                                             <div>
                                                                 <h5 class="mb-1 fw-bold text-dark">{{ $instruktur->nama }}</h5>
-                                                                <span class="badge bg-danger bg-opacity-10 text-danger border border-danger rounded-pill px-3 py-2">
-                                                                    <i class="bi bi-star-fill me-1 small"></i> {{ $instruktur->spesialisasi ?? 'General Trainer' }}
-                                                                </span>
+                                                                <div class="d-flex align-items-center gap-3">
+                                                                    <span class="badge bg-danger bg-opacity-10 text-danger border border-danger rounded-pill px-3 py-2">
+                                                                        <i class="bi bi-award-fill me-1 small"></i> {{ $instruktur->spesialisasi ?? 'General Trainer' }}
+                                                                    </span>
+                                                                    <span class="text-danger fw-bold d-flex align-items-center">
+                                                                        <i class="bi bi-star-fill me-1"></i> {{ $instruktur->rating_avg > 0 ? $instruktur->rating_avg : 'Baru' }}
+                                                                    </span>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>

@@ -38,7 +38,7 @@ class MemberApiController extends Controller
             'email' => 'required|string|email|max:255|unique:members,email',
             'no_hp' => 'required|string|max:15',
             'password' => 'required|string|min:6',
-            'lokasi_id' => 'required',
+            'lokasi_id' => 'nullable',
             'foto' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048'
         ]);
 
@@ -610,5 +610,28 @@ class MemberApiController extends Controller
         }
 
         return response()->json(['status' => 'error', 'message' => 'Data tidak ditemukan / Anda belum Check-in'], 404);
+    }
+
+    public function rateInstruktur(Request $request)
+    {
+        $request->validate([
+            'member_id' => 'required|exists:members,member_id',
+            'instruktur_id' => 'required|exists:instrukturs,instruktur_id',
+            'rating' => 'required|integer|min:1|max:5',
+            'review' => 'nullable|string'
+        ]);
+
+        $rating = \App\Models\InstrukturRating::create([
+            'member_id' => $request->member_id,
+            'instruktur_id' => $request->instruktur_id,
+            'rating' => $request->rating,
+            'review' => $request->review,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Terima kasih atas penilaian Anda!',
+            'data' => $rating
+        ]);
     }
 }

@@ -32,7 +32,24 @@ class MemberController extends Controller
 
         // Filter by Membership Status
         if ($request->filled('status_membership') && $request->status_membership != '') {
-            $query->where('status_membership', $request->status_membership);
+            $status = $request->status_membership;
+            if ($status == 'Aktif') {
+                $query->where('status_membership', 'Aktif')->whereDate('tanggal_berakhir_member', '>=', now());
+            } elseif ($status == 'Tidak Aktif') {
+                $query->where(function($q) {
+                    $q->where('status_membership', '!=', 'Aktif')
+                      ->orWhereNull('tanggal_berakhir_member')
+                      ->orWhereDate('tanggal_berakhir_member', '<', now());
+                });
+            } elseif (strpos($status, 'paket_') === 0) {
+                $paketId = str_replace('paket_', '', $status);
+                $query->whereHas('pembayarans', function($q) use ($paketId) {
+                    $q->where('status', 'settlement')
+                      ->whereHas('pemesanan', function($q2) use ($paketId) {
+                          $q2->where('paket_id', $paketId);
+                      });
+                });
+            }
         }
 
         // Filter by Lokasi (Cabang)
@@ -42,8 +59,9 @@ class MemberController extends Controller
 
         $members = $query->get();
         $lokasis = Lokasi::all();
+        $pakets = \App\Models\Paket::all();
 
-        return view('member.index', compact('members', 'lokasis'));
+        return view('member.index', compact('members', 'lokasis', 'pakets'));
     }
 
     public function exportExcel(Request $request)

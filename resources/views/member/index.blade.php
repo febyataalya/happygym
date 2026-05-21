@@ -11,14 +11,22 @@
         <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari member..." class="border-gray-300 rounded-md shadow-sm w-64 focus:ring-red-500 focus:border-red-500">
         <select name="bulan" class="border-gray-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500">
             <option value="">Semua Bulan</option>
-            @for($i=1; $i<=12; $i++)
-                <option value="{{ $i }}" {{ request('bulan') == $i ? 'selected' : '' }}>Bulan {{ $i }}</option>
-            @endfor
+            @php
+                $bulanIndo = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+            @endphp
+            @foreach($bulanIndo as $index => $namaBulan)
+                <option value="{{ $index + 1 }}" {{ request('bulan') == ($index + 1) ? 'selected' : '' }}>{{ $namaBulan }}</option>
+            @endforeach
         </select>
         <select name="status_membership" class="border-gray-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500">
             <option value="">Semua Membership</option>
             <option value="Aktif" {{ request('status_membership') == 'Aktif' ? 'selected' : '' }}>Aktif</option>
             <option value="Tidak Aktif" {{ request('status_membership') == 'Tidak Aktif' ? 'selected' : '' }}>Tidak Aktif</option>
+            <optgroup label="Berdasarkan Paket">
+                @foreach($pakets as $paket)
+                    <option value="paket_{{ $paket->paket_id }}" {{ request('status_membership') == 'paket_'.$paket->paket_id ? 'selected' : '' }}>Paket {{ $paket->nama_paket }}</option>
+                @endforeach
+            </optgroup>
         </select>
         <select name="lokasi_id" class="border-gray-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500">
             <option value="">Semua Cabang</option>
@@ -34,10 +42,7 @@
         @endif
     </form>
 
-    <div class="flex gap-4 mb-8">
-        <a href="{{ route('member.export.excel') }}" class="inline-block bg-[#2bc466] hover:bg-green-600 text-white font-semibold py-2 px-6 rounded shadow-sm transition">Export CSV</a>
-        <a href="{{ route('member.export.pdf') }}" class="inline-block bg-[#e45151] hover:bg-red-600 text-white font-semibold py-2 px-6 rounded shadow-sm transition">Export PDF</a>
-    </div>
+    <div class="mb-4"></div>
 
     @if(session('success'))
         <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded shadow-sm">

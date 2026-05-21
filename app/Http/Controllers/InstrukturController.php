@@ -15,8 +15,10 @@ class InstrukturController extends Controller
         // 1. Ambil semua data lokasi untuk mengisi dropdown filter
         $lokasis = Lokasi::all();
 
-        // 2. Siapkan query dasar untuk Instruktur (Eager Loading lokasi)
-        $query = Instruktur::with('lokasi');
+        // 2. Siapkan query dasar untuk Instruktur (Eager Loading lokasi dan hitung member aktif)
+        $query = Instruktur::with('lokasi')->withCount(['memberPaketPts' => function ($query) {
+            $query->where('status', 'Aktif')->whereHas('member');
+        }]);
 
         // 3. Cek apakah admin memilih filter lokasi tertentu
         if ($request->filled('lokasi_id')) {

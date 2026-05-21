@@ -16,8 +16,11 @@
 </head>
 <body>
     <div class="header">
-        <h2>HAPPY GYM</h2>
-        <p>Laporan Riwayat Transaksi Member<br>Tanggal Cetak: {{ date('d F Y H:i') }}</p>
+        <h2>LAPORAN TRANSAKSI HAPPY GYM</h2>
+        @if(isset($filterString))
+            <p style="margin-top: 5px; font-size: 14px; color: #555;">{{ $filterString }}</p>
+        @endif
+        <p>Tanggal Cetak: {{ date('d F Y H:i') }}</p>
     </div>
 
     <table>

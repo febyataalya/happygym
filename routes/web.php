@@ -34,5 +34,15 @@ Route::get('/transaksi/export/excel', [TransaksiController::class, 'exportExcel'
 Route::get('/transaksi/export/pdf', [TransaksiController::class, 'exportPdf'])->name('transaksi.export.pdf');
 Route::get('/transaksi', [TransaksiController::class, 'index'])->name('transaksi.index');
 Route::get('/transaksi/{id}', [TransaksiController::class, 'show'])->name('transaksi.show');
+
+// Laporan
+Route::redirect('/laporan', '/laporan/member');
+Route::get('/laporan/member', [\App\Http\Controllers\LaporanController::class, 'memberIndex'])->name('laporan.member');
+Route::get('/laporan/member/export/excel', [\App\Http\Controllers\LaporanController::class, 'exportMemberExcel'])->name('laporan.member.export.excel');
+Route::get('/laporan/member/export/pdf', [\App\Http\Controllers\LaporanController::class, 'exportMemberPdf'])->name('laporan.member.export.pdf');
+
+Route::get('/laporan/transaksi', [\App\Http\Controllers\LaporanController::class, 'transaksiIndex'])->name('laporan.transaksi');
+Route::get('/laporan/transaksi/export/excel', [\App\Http\Controllers\LaporanController::class, 'exportTransaksiExcel'])->name('laporan.transaksi.export.excel');
+Route::get('/laporan/transaksi/export/pdf', [\App\Http\Controllers\LaporanController::class, 'exportTransaksiPdf'])->name('laporan.transaksi.export.pdf');
 Route::resource('lokasi', LokasiController::class);
 require __DIR__.'/auth.php';

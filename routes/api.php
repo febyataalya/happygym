@@ -41,6 +41,7 @@ Route::prefix('member')->group(function () {
     Route::get('/riwayat-latihan/{member_id}', [\App\Http\Controllers\Api\MemberApiController::class, 'getRiwayatLatihan']);
     Route::get('/pt/riwayat-booking/{member_id}', [\App\Http\Controllers\Api\MemberApiController::class, 'getRiwayatBookingPt']);
     Route::get('/pt/riwayat-sesi/{member_id}', [\App\Http\Controllers\Api\MemberApiController::class, 'getRiwayatSesiPt']);
+    Route::post('/pt/rate-instruktur', [\App\Http\Controllers\Api\MemberApiController::class, 'rateInstruktur']);
 
     Route::get('/pt/coach-cabang/{member_id}', [\App\Http\Controllers\Api\MemberApiController::class, 'getCoachCabang']);
     Route::post('/pt/pilih-coach', [\App\Http\Controllers\Api\MemberApiController::class, 'pilihCoachPt']);

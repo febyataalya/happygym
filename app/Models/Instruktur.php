@@ -25,7 +25,7 @@ class Instruktur extends Authenticatable
         'password',
     ];
 
-    protected $appends = ['foto_url'];
+    protected $appends = ['foto_url', 'rating_avg'];
 
     public function getFotoUrlAttribute()
     {
@@ -36,5 +36,20 @@ class Instruktur extends Authenticatable
     public function lokasi()
     {
         return $this->belongsTo(Lokasi::class, 'lokasi_id', 'lokasi_id');
+    }
+
+    public function ratings()
+    {
+        return $this->hasMany(InstrukturRating::class, 'instruktur_id', 'instruktur_id');
+    }
+
+    public function memberPaketPts()
+    {
+        return $this->hasMany(MemberPaketPt::class, 'instruktur_id', 'instruktur_id');
+    }
+
+    public function getRatingAvgAttribute()
+    {
+        return number_format($this->ratings()->avg('rating') ?? 0, 1);
     }
 }

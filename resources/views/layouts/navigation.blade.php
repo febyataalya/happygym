@@ -1,5 +1,5 @@
 <aside class="w-64 bg-white flex flex-col justify-between h-screen shadow-[4px_0_24px_rgba(0,0,0,0.03)] flex-shrink-0">
-    <div>
+    <div class="flex-1 overflow-y-auto">
         <div class="flex items-center justify-center h-28 border-b border-gray-100 p-4">
             <a href="{{ route('dashboard') }}" class="block">
                 {{-- 
@@ -40,6 +40,22 @@
             <a href="{{ url('/diskon') }}" class="block py-3 px-4 rounded-lg transition duration-200 {{ request()->is('diskon*') ? 'bg-red-50 text-[#db3535] font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-[#db3535]' }}">
                 Kelola Diskon
             </a>
+
+            <!-- Menu Laporan (Dropdown) -->
+            <div x-data="{ open: {{ request()->is('laporan*') ? 'true' : 'false' }} }">
+                <button @click="open = !open" type="button" class="w-full flex justify-between items-center py-3 px-4 rounded-lg transition duration-200 {{ request()->is('laporan*') ? 'bg-red-50 text-[#db3535] font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-[#db3535]' }}">
+                    <span>Laporan</span>
+                    <svg :class="{'rotate-180': open}" style="width: 16px; height: 16px; transition: transform 0.2s;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </button>
+                <div x-show="open" style="display: {{ request()->is('laporan*') ? 'block' : 'none' }};" class="mt-1 pl-4 space-y-1">
+                    <a href="{{ url('/laporan/member') }}" class="block py-2 px-4 rounded-lg transition duration-200 text-sm {{ request()->is('laporan/member*') ? 'text-[#db3535] font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-[#db3535]' }}">
+                        Laporan Member
+                    </a>
+                    <a href="{{ url('/laporan/transaksi') }}" class="block py-2 px-4 rounded-lg transition duration-200 text-sm {{ request()->is('laporan/transaksi*') ? 'text-[#db3535] font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-[#db3535]' }}">
+                        Laporan Transaksi
+                    </a>
+                </div>
+            </div>
         </nav>
     </div>
 
