@@ -493,16 +493,110 @@ class MemberApiController extends Controller
 
     public function pilihCoachPt(Request $request)
     {
+        // =========================
+        // VALIDASI
+        // =========================
+
         $request->validate([
             'member_paket_id' => 'required',
             'instruktur_id' => 'required'
         ]);
 
-        $paket = MemberPaketPt::find($request->member_paket_id);
-        $paket->instruktur_id = $request->instruktur_id;
+        // =========================
+        // AMBIL PAKET PT
+        // =========================
+
+        $paket = MemberPaketPt::find(
+            $request->member_paket_id
+        );
+
+        // jika paket tidak ditemukan
+        if (!$paket) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Paket PT tidak ditemukan'
+            ], 404);
+        }
+
+        // =========================
+        // CEK MEMBER
+        // =========================
+
+        $member = Member::find($paket->member_id);
+
+        if (!$member) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Member tidak ditemukan'
+            ], 404);
+        }
+
+        // =========================
+        // CEK INSTRUKTUR
+        // =========================
+
+        $instruktur = Instruktur::find(
+            $request->instruktur_id
+        );
+
+        if (!$instruktur) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Coach tidak ditemukan'
+            ], 404);
+        }
+
+        // =========================
+        // VALIDASI CABANG
+        // =========================
+
+        if (
+            $instruktur->lokasi_id !=
+            $member->lokasi_id
+        ) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' =>
+                    'Coach tidak sesuai cabang member'
+            ], 400);
+        }
+
+        // =========================
+        // LOCK COACH
+        // =========================
+
+        // jika coach sudah dipilih
+        // dan sesi masih tersisa
+        if (
+            $paket->instruktur_id != null &&
+            $paket->sisa_sesi > 0
+        ) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' =>
+                    'Coach masih terkunci sampai sesi selesai'
+            ], 400);
+        }
+
+        // =========================
+        // SIMPAN COACH
+        // =========================
+
+        $paket->instruktur_id =
+            $request->instruktur_id;
+
         $paket->save();
 
-        return response()->json(['status' => 'success', 'message' => 'Coach berhasil dipilih!'], 200);
+        return response()->json([
+            'status' => 'success',
+            'message' =>
+                'Coach berhasil dipilih dan terkunci sampai sesi selesai'
+        ], 200);
     }
 
     public function getInstrukturPtTersedia($member_id) 
@@ -530,29 +624,120 @@ class MemberApiController extends Controller
 
     public function bookingPt(Request $request)
     {
+        // =========================
+        // VALIDASI
+        // =========================
+
         $request->validate([
             'member_paket_id' => 'required',
             'tanggal_sesi' => 'required|date',
             'jam_sesi' => 'required'
         ]);
 
-        $paket = MemberPaketPt::find($request->member_paket_id);
-        if (!$paket || !$paket->instruktur_id) {
-            return response()->json(['status' => 'error', 'message' => 'Anda belum memilih Coach PT'], 400);
-        }
-        if ($paket->sisa_sesi <= 0) {
-            return response()->json(['status' => 'error', 'message' => 'Sisa sesi habis'], 400);
+        // =========================
+        // AMBIL PAKET PT
+        // =========================
+
+        $paket = MemberPaketPt::find(
+            $request->member_paket_id
+        );
+
+        // jika paket tidak ditemukan
+        if (!$paket) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Paket PT tidak ditemukan'
+            ], 404);
         }
 
+        // =========================
+        // WAJIB PILIH COACH
+        // =========================
+
+        if (!$paket->instruktur_id) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Anda belum memilih Coach PT'
+            ], 400);
+        }
+
+        // =========================
+        // CEK SISA SESI
+        // =========================
+
+        if ($paket->sisa_sesi <= 0) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Sisa sesi habis'
+            ], 400);
+        }
+
+        // =========================
+        // BUAT BOOKING
+        // =========================
+
         $booking = BookingPt::create([
-            'member_paket_id' => $request->member_paket_id,
-            'instruktur_id' => $paket->instruktur_id,
-            'tanggal_sesi' => $request->tanggal_sesi,
-            'jam_sesi' => $request->jam_sesi,
+
+            'member_paket_id' =>
+                $request->member_paket_id,
+
+            'instruktur_id' =>
+                $paket->instruktur_id,
+
+            'tanggal_sesi' =>
+                $request->tanggal_sesi,
+
+            'jam_sesi' =>
+                $request->jam_sesi,
+
             'status' => 'Pending'
         ]);
 
-        return response()->json(['status' => 'success', 'message' => 'Berhasil mengajukan jadwal PT', 'data' => $booking], 200);
+        // =========================
+        // KURANGI SESI
+        // =========================
+
+        $paket->sisa_sesi -= 1;
+
+        // =========================
+        // JIKA SESI HABIS
+        // =========================
+
+        if ($paket->sisa_sesi <= 0) {
+
+            // unlock coach
+            $paket->instruktur_id = null;
+
+            // update status paket
+            $paket->status = 'Selesai';
+        }
+
+        // =========================
+        // SIMPAN PAKET
+        // =========================
+
+        $paket->save();
+
+        // =========================
+        // RESPONSE
+        // =========================
+
+        return response()->json([
+
+            'status' => 'success',
+
+            'message' =>
+                'Berhasil mengajukan jadwal PT',
+
+            'sisa_sesi' =>
+                $paket->sisa_sesi,
+
+            'data' => $booking
+
+        ], 200);
     }
 
     public function tanggapanNegosiasiPt(Request $request)
@@ -632,6 +817,191 @@ class MemberApiController extends Controller
             })
             ->orderBy('waktu_penggunaan', 'desc')
             ->get();
+
+        return response()->json(['status' => 'success', 'data' => $riwayat], 200);
+    }
+
+    // =========================================================================
+    // BAGIAN 6: PRESENSI MANDIRI (CHECK-IN GEDUNG)
+    // =========================================================================
+
+    public function getStatusPresensi($member_id)
+    {
+        // Mengecek apakah hari ini member sudah check-in dan belum check-out
+        $kunjungan = KunjunganGym::where('member_id', $member_id)
+            ->where('tanggal', now()->toDateString())
+            ->where('status_kunjungan', 'Masuk')
+            ->first();
+
+        return response()->json([
+            'status' => 'success',
+            'is_check_in' => $kunjungan ? true : false,
+            'data' => $kunjungan
+        ]);
+    }
+
+    public function checkIn(Request $request)
+    {
+        $request->validate(['member_id' => 'required', 'lokasi_id' => 'required']);
+
+        // --- 1. SATPAM VALIDASI MEMBERSHIP ---
+        $member = Member::find($request->member_id);
+        
+        // Cek apakah statusnya tidak aktif, atau tanggal berakhirnya sudah lewat
+        if (!$member || $member->status_membership !== 'Aktif' || $member->tanggal_berakhir_member < now()->toDateString()) {
+            // Jika membership mati/habis, tolak Check-in!
+            return response()->json([
+                'status' => 'error', 
+                'message' => 'Gagal: Membership Anda belum aktif atau sudah kedaluwarsa. Silakan beli paket terlebih dahulu.'
+            ], 403);
+        }
+        // -------------------------------------
+
+        // --- 2. CEK DOUBLE CHECK-IN ---
+        $cekSudahMasuk = KunjunganGym::where('member_id', $request->member_id)
+                            ->where('tanggal', now()->toDateString())
+                            ->where('status_kunjungan', 'Masuk')
+                            ->first();
+
+        if ($cekSudahMasuk) {
+            return response()->json(['status' => 'error', 'message' => 'Anda sudah Check-in sebelumnya.'], 400);
+        }
+
+        // --- 3. CATAT CHECK-IN ---
+        $kunjungan = KunjunganGym::create([
+            'member_id' => $request->member_id,
+            'lokasi_id' => $request->lokasi_id,
+            'tanggal' => now()->toDateString(),
+            'waktu_masuk' => now()->toTimeString(), // Sekarang sudah pakai jam WIB yang benar!
+            'status_kunjungan' => 'Masuk'
+        ]);
+
+        return response()->json(['status' => 'success', 'message' => 'Berhasil Check-in! Selamat berlatih.', 'data' => $kunjungan], 201);
+    }
+
+    public function checkOut(Request $request)
+    {
+        // Cari data check-in hari ini yang statusnya masih 'Masuk'
+        $kunjungan = KunjunganGym::where('member_id', $request->member_id)
+            ->where('tanggal', now()->toDateString())
+            ->where('status_kunjungan', 'Masuk')
+            ->first();
+
+        if ($kunjungan) {
+            $kunjungan->waktu_keluar = now()->toTimeString();
+            $kunjungan->status_kunjungan = 'Selesai';
+            $kunjungan->save();
+            
+            return response()->json(['status' => 'success', 'message' => 'Berhasil Check-out! Hati-hati di jalan.']);
+        }
+
+        return response()->json(['status' => 'error', 'message' => 'Data tidak ditemukan / Anda belum Check-in'], 404);
+    }
+
+    public function rateInstruktur(Request $request)
+    {
+        $request->validate([
+            'member_id' => 'required|exists:members,member_id',
+            'instruktur_id' => 'required|exists:instrukturs,instruktur_id',
+            'rating' => 'required|integer|min:1|max:5',
+            'review' => 'nullable|string'
+        ]);
+
+        $rating = \App\Models\InstrukturRating::create([
+            'member_id' => $request->member_id,
+            'instruktur_id' => $request->instruktur_id,
+            'rating' => $request->rating,
+            'review' => $request->review,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Terima kasih atas penilaian Anda!',
+            'data' => $rating
+        ]);
+    }
+
+    public function pilihInstruktur(Request $request)
+    {
+        $request->validate([
+            'member_id' => 'required',
+            'instruktur_id' => 'required'
+        ]);
+
+        $member = Member::find($request->member_id);
+
+        if (!$member) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Member tidak ditemukan'
+            ], 404);
+        }
+
+        // Cari paket PT aktif
+        $paketPt = MemberPaketPt::where('member_id', $member->member_id)
+            ->where('status', 'Aktif')
+            ->first();
+
+        if (!$paketPt) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Paket PT aktif tidak ditemukan'
+            ], 404);
+        }
+
+        // =========================
+        // LOCK INSTRUKTUR
+        // =========================
+
+        if (
+            $paketPt->instruktur_id != null &&
+            $paketPt->sisa_sesi > 0
+        ) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Instruktur tidak dapat diganti sebelum sesi selesai'
+            ], 400);
+        }
+
+        // =========================
+        // VALIDASI CABANG
+        // =========================
+
+        $instruktur = Instruktur::find($request->instruktur_id);
+
+        if (!$instruktur) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Instruktur tidak ditemukan'
+            ], 404);
+        }
+
+        // instruktur harus sesuai cabang member
+        if ($instruktur->lokasi_id != $member->lokasi_id) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Instruktur tidak sesuai cabang member'
+            ], 400);
+        }
+
+        // =========================
+        // SIMPAN INSTRUKTUR
+        // =========================
+
+        $paketPt->instruktur_id = $request->instruktur_id;
+
+        $paketPt->lokasi_id = $member->lokasi_id;
+
+        $paketPt->save();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Instruktur berhasil dipilih'
+        ], 200);
+    }
+}           ->get();
 
         return response()->json(['status' => 'success', 'data' => $riwayat], 200);
     }
