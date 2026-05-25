@@ -8,6 +8,7 @@ use App\Models\Member;
 use App\Models\Presensi;
 use App\Models\JadwalLatihan;
 use App\Models\BookingAbsensi;
+use App\Models\InstrukturRating;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
@@ -73,9 +74,53 @@ class InstrukturApiController extends Controller
 
     public function getProfile($id)
     {
-        $instruktur = Instruktur::find($id);
-        if (!$instruktur) return response()->json(['status' => 'error', 'message' => 'Instruktur tidak ditemukan'], 404);
-        return response()->json(['status' => 'success', 'data' => $instruktur], 200);
+
+    // =========================
+    // AMBIL DATA INSTRUKTUR
+    // =========================
+
+    $instruktur = Instruktur::find($id);
+
+    if (!$instruktur) {
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Instruktur tidak ditemukan'
+        ], 404);
+    }
+
+    // =========================
+    // HITUNG RATA-RATA RATING
+    // =========================
+
+    $rating = round(
+        InstrukturRating::where(
+            'instruktur_id',
+            $instruktur->instruktur_id
+        )->avg('rating'),
+        1
+    );
+
+    // jika belum ada rating
+    if (!$rating) {
+        $rating = 0;
+    }
+
+    // =========================
+    // TAMBAHKAN KE RESPONSE
+    // =========================
+
+    $instruktur->rating = $rating;
+
+    // =========================
+    // RESPONSE
+    // =========================
+
+    return response()->json([
+        'status' => 'success',
+        'data' => $instruktur
+    ], 200);
+}
     }
 
     public function getJadwalSaya($instruktur_id)
@@ -315,4 +360,56 @@ class InstrukturApiController extends Controller
 
         return response()->json(['status' => 'success', 'data' => $klien], 200);
     }
+    
+    public function getRatingSaya($instruktur_id)
+        {
+            // =========================
+            // CEK INSTRUKTUR
+            // =========================
+
+            $instruktur = Instruktur::find($instruktur_id);
+
+            if (!$instruktur) {
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Instruktur tidak ditemukan'
+                ], 404);
+            }
+
+            // =========================
+            // AMBIL RATING
+            // =========================
+
+            $ratings = InstrukturRating::where(
+                'instruktur_id',
+                $instruktur_id
+            )
+            ->latest()
+            ->get();
+
+            // =========================
+            // HITUNG RATA-RATA
+            // =========================
+
+            $avgRating = round(
+                $ratings->avg('rating'),
+                1
+            );
+
+            if (!$avgRating) {
+                $avgRating = 0;
+            }
+
+            // =========================
+            // RESPONSE
+            // =========================
+
+            return response()->json([
+                'status' => 'success',
+                'rating' => $avgRating,
+                'data' => $ratings
+            ]);
+        }
+    
 }

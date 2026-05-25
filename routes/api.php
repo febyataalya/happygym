@@ -50,6 +50,8 @@ Route::prefix('member')->group(function () {
     Route::get('/presensi/status/{member_id}', [\App\Http\Controllers\Api\MemberApiController::class, 'getStatusPresensi']);
     Route::post('/presensi/check-in', [\App\Http\Controllers\Api\MemberApiController::class, 'checkIn']);
     Route::post('/presensi/check-out', [\App\Http\Controllers\Api\MemberApiController::class, 'checkOut']);
+
+    Route::post('/pt/rate-instruktur', [MemberApiController::class, 'rateInstruktur']);
 });
 
 // ==========================================
@@ -81,5 +83,6 @@ Route::prefix('instruktur')->group(function () {
     Route::post('/pt/scan-qr', [InstrukturApiController::class, 'scanQrPt']);
     Route::get('/pt/ketersediaan/{instruktur_id}', [InstrukturApiController::class, 'getKetersediaanPt']);
     Route::post('/pilih-instruktur', [MemberApiController::class, 'pilihInstruktur']);
+    Route::get('/pt/rating/{instruktur_id}', [InstrukturApiController::class, 'getRatingSaya']);
 
 });

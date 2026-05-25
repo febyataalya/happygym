@@ -24,6 +24,7 @@ use App\Models\KetersediaanInstruktur;
 use App\Models\BookingPt;
 use App\Models\Lokasi; // <--- Pastikan ini ada
 use App\Models\KunjunganGym;
+use App\Models\InstrukturRating;
 
 class MemberApiController extends Controller
 {
@@ -507,6 +508,14 @@ class MemberApiController extends Controller
         // Ambil instruktur yang lokasinya sama dengan cabang member
         $coaches = Instruktur::where('lokasi_id', $member->lokasi_id)->get();
         return response()->json(['status' => 'success', 'data' => $coaches], 200);
+        $coach->rating =
+    round(
+        InstrukturRating::where(
+            'instruktur_id',
+            $coach->instruktur_id
+        )->avg('rating'),
+        1
+    );
     }
 
     public function pilihCoachPt(Request $request)
@@ -991,4 +1000,27 @@ class MemberApiController extends Controller
             'message' => 'Instruktur berhasil dipilih'
         ], 200);
     }
+
+        public function rateInstruktur(Request $request)
+    {
+        $request->validate([
+            'member_id' => 'required',
+            'instruktur_id' => 'required',
+            'booking_id' => 'required',
+            'rating' => 'required|min:1|max:5'
+        ]);
+
+        InstrukturRating::create([
+            'member_id' => $request->member_id,
+            'instruktur_id' => $request->instruktur_id,
+            'booking_id' => $request->booking_id,
+            'rating' => $request->rating
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Rating berhasil dikirim'
+        ]);
+    }
+
 }
