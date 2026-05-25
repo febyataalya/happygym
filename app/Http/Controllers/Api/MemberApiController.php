@@ -493,49 +493,24 @@ class MemberApiController extends Controller
 
     public function pilihCoachPt(Request $request)
     {
-        // =========================
-        // VALIDASI
-        // =========================
-
         $request->validate([
             'member_paket_id' => 'required',
-            'instruktur_id'   => 'required'
+            'instruktur_id' => 'required'
         ]);
-
-        // =========================
-        // AMBIL PAKET PT
-        // =========================
 
         $paket = MemberPaketPt::find(
             $request->member_paket_id
         );
 
-        // jika paket tidak ditemukan
         if (!$paket) {
 
             return response()->json([
-                'status'  => 'error',
+                'status' => 'error',
                 'message' => 'Paket PT tidak ditemukan'
             ], 404);
         }
 
-        // =========================
-        // CEK MEMBER
-        // =========================
-
         $member = Member::find($paket->member_id);
-
-        if (!$member) {
-
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Member tidak ditemukan'
-            ], 404);
-        }
-
-        // =========================
-        // CEK INSTRUKTUR
-        // =========================
 
         $instruktur = Instruktur::find(
             $request->instruktur_id
@@ -544,28 +519,44 @@ class MemberApiController extends Controller
         if (!$instruktur) {
 
             return response()->json([
-                'status'  => 'error',
+                'status' => 'error',
                 'message' => 'Coach tidak ditemukan'
             ], 404);
         }
 
-        // =========================
-        // VALIDASI CABANG
-        // =========================
-
+        // validasi cabang
         if (
             $instruktur->lokasi_id !=
             $member->lokasi_id
         ) {
 
             return response()->json([
-                'status'  => 'error',
-                'message' => 'Coach tidak sesuai cabang member'
+                'status' => 'error',
+                'message' =>
+                    'Coach tidak sesuai cabang member'
             ], 400);
         }
 
         // =========================
-        // SIMPAN / GANTI COACH
+        // LOCK COACH
+        // =========================
+
+        // jika sudah pernah pilih coach
+        // dan sesi masih berjalan
+        if (
+            $paket->instruktur_id != null &&
+            $paket->sisa_sesi > 0
+        ) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' =>
+                    'Coach terkunci sampai sesi selesai'
+            ], 400);
+        }
+
+        // =========================
+        // SIMPAN COACH
         // =========================
 
         $paket->instruktur_id =
@@ -573,13 +564,10 @@ class MemberApiController extends Controller
 
         $paket->save();
 
-        // =========================
-        // RESPONSE
-        // =========================
-
         return response()->json([
-            'status'  => 'success',
-            'message' => 'Coach berhasil dipilih'
+            'status' => 'success',
+            'message' =>
+                'Coach berhasil dipilih'
         ], 200);
     }
 
