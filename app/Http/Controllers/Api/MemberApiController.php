@@ -166,31 +166,81 @@ class MemberApiController extends Controller
 
     public function updateProfile(Request $request, $id)
     {
+        // Cari member berdasarkan ID
         $member = Member::find($id);
-        if (!$member) return response()->json(['status' => 'error', 'message' => 'Member tidak ditemukan'], 404);
 
+        // Jika member tidak ditemukan
+        if (!$member) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Member tidak ditemukan'
+            ], 404);
+        }
+
+        // Validasi input
         $request->validate([
             'nama' => 'required|string|max:255',
             'no_hp' => 'required|string|max:15',
-            'email' => 'required|string|email|unique:members,email,'.$id.',member_id',
+            'email' => 'required|string|email|unique:members,email,' . $id . ',member_id',
+            'password' => 'nullable|string|min:6',
+            'lokasi_id' => 'nullable',
             'foto' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048'
         ]);
+
+        // =========================
+        // UPDATE DATA MEMBER
+        // =========================
 
         $member->nama = $request->nama;
         $member->email = $request->email;
         $member->no_hp = $request->no_hp;
+
+        // =========================
+        // UPDATE CABANG HOME GYM
+        // =========================
+
+        $member->lokasi_id = $request->lokasi_id;
+
+        // =========================
+        // UPDATE PASSWORD
+        // =========================
+
         if ($request->filled('password')) {
             $member->password = Hash::make($request->password);
         }
 
+        // =========================
+        // UPDATE FOTO
+        // =========================
+
         if ($request->hasFile('foto')) {
-            if ($member->foto && \Storage::disk('public')->exists($member->foto)) {
+
+            // Hapus foto lama
+            if (
+                $member->foto &&
+                \Storage::disk('public')->exists($member->foto)
+            ) {
                 \Storage::disk('public')->delete($member->foto);
             }
-            $member->foto = $request->file('foto')->store('members', 'public');
+
+            // Upload foto baru
+            $member->foto = $request
+                ->file('foto')
+                ->store('members', 'public');
         }
 
+        // =========================
+        // SIMPAN DATABASE
+        // =========================
+
         $member->save();
+
+        // Refresh data terbaru
+        $member->refresh();
+
+        // =========================
+        // FOTO URL
+        // =========================
 
         if ($member->foto) {
             $member->foto_url = asset('storage/' . $member->foto);
@@ -198,7 +248,25 @@ class MemberApiController extends Controller
             $member->foto_url = null;
         }
 
-        return response()->json(['status' => 'success', 'message' => 'Profil diperbarui!', 'data' => $member], 200);
+        // =========================
+        // NAMA LOKASI
+        // =========================
+
+        $lokasi = Lokasi::find($member->lokasi_id);
+
+        $member->nama_lokasi = $lokasi
+            ? $lokasi->nama_cabang
+            : null;
+
+        // =========================
+        // RESPONSE
+        // =========================
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Profil diperbarui!',
+            'data' => $member
+        ], 200);
     }
 
 
