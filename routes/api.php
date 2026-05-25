@@ -80,4 +80,6 @@ Route::prefix('instruktur')->group(function () {
     // 3. Instruktur scan QR code booking PT milik member
     Route::post('/pt/scan-qr', [InstrukturApiController::class, 'scanQrPt']);
     Route::get('/pt/ketersediaan/{instruktur_id}', [InstrukturApiController::class, 'getKetersediaanPt']);
+    Route::post('/pilih-instruktur', [MemberApiController::class, 'pilihInstruktur']);
+
 });

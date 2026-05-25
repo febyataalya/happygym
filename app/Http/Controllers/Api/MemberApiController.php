@@ -166,10 +166,10 @@ class MemberApiController extends Controller
 
     public function updateProfile(Request $request, $id)
     {
-        // Cari member berdasarkan ID
+        // Cari member
         $member = Member::find($id);
 
-        // Jika member tidak ditemukan
+        // Jika tidak ditemukan
         if (!$member) {
             return response()->json([
                 'status' => 'error',
@@ -177,7 +177,13 @@ class MemberApiController extends Controller
             ], 404);
         }
 
-        // Validasi input
+        // Simpan lokasi lama
+        $lokasiLama = $member->lokasi_id;
+
+        // =========================
+        // VALIDASI
+        // =========================
+
         $request->validate([
             'nama' => 'required|string|max:255',
             'no_hp' => 'required|string|max:15',
@@ -196,7 +202,7 @@ class MemberApiController extends Controller
         $member->no_hp = $request->no_hp;
 
         // =========================
-        // UPDATE CABANG HOME GYM
+        // UPDATE CABANG
         // =========================
 
         $member->lokasi_id = $request->lokasi_id;
@@ -215,7 +221,7 @@ class MemberApiController extends Controller
 
         if ($request->hasFile('foto')) {
 
-            // Hapus foto lama
+            // hapus foto lama
             if (
                 $member->foto &&
                 \Storage::disk('public')->exists($member->foto)
@@ -223,19 +229,46 @@ class MemberApiController extends Controller
                 \Storage::disk('public')->delete($member->foto);
             }
 
-            // Upload foto baru
+            // upload foto baru
             $member->foto = $request
                 ->file('foto')
                 ->store('members', 'public');
         }
 
         // =========================
-        // SIMPAN DATABASE
+        // SIMPAN MEMBER
         // =========================
 
         $member->save();
 
-        // Refresh data terbaru
+        // =========================
+        // CEK PINDAH CABANG
+        // =========================
+
+        if ($lokasiLama != $request->lokasi_id) {
+
+            // Cari paket PT aktif
+            $paketPtAktif = MemberPaketPt::where('member_id', $member->member_id)
+                ->where('status', 'Aktif')
+                ->first();
+
+            // Jika ada paket aktif
+            if ($paketPtAktif) {
+
+                // RESET INSTRUKTUR
+                $paketPtAktif->instruktur_id = null;
+
+                // UPDATE LOKASI PT
+                $paketPtAktif->lokasi_id = $request->lokasi_id;
+
+                $paketPtAktif->save();
+            }
+        }
+
+        // =========================
+        // REFRESH DATA
+        // =========================
+
         $member->refresh();
 
         // =========================
@@ -249,7 +282,7 @@ class MemberApiController extends Controller
         }
 
         // =========================
-        // NAMA LOKASI
+        // NAMA CABANG
         // =========================
 
         $lokasi = Lokasi::find($member->lokasi_id);
@@ -264,7 +297,7 @@ class MemberApiController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Profil diperbarui!',
+            'message' => 'Profil berhasil diperbarui',
             'data' => $member
         ], 200);
     }
@@ -701,5 +734,86 @@ class MemberApiController extends Controller
             'message' => 'Terima kasih atas penilaian Anda!',
             'data' => $rating
         ]);
+    }
+
+    public function pilihInstruktur(Request $request)
+    {
+        $request->validate([
+            'member_id' => 'required',
+            'instruktur_id' => 'required'
+        ]);
+
+        $member = Member::find($request->member_id);
+
+        if (!$member) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Member tidak ditemukan'
+            ], 404);
+        }
+
+        // Cari paket PT aktif
+        $paketPt = MemberPaketPt::where('member_id', $member->member_id)
+            ->where('status', 'Aktif')
+            ->first();
+
+        if (!$paketPt) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Paket PT aktif tidak ditemukan'
+            ], 404);
+        }
+
+        // =========================
+        // LOCK INSTRUKTUR
+        // =========================
+
+        if (
+            $paketPt->instruktur_id != null &&
+            $paketPt->sisa_sesi > 0
+        ) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Instruktur tidak dapat diganti sebelum sesi selesai'
+            ], 400);
+        }
+
+        // =========================
+        // VALIDASI CABANG
+        // =========================
+
+        $instruktur = Instruktur::find($request->instruktur_id);
+
+        if (!$instruktur) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Instruktur tidak ditemukan'
+            ], 404);
+        }
+
+        // instruktur harus sesuai cabang member
+        if ($instruktur->lokasi_id != $member->lokasi_id) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Instruktur tidak sesuai cabang member'
+            ], 400);
+        }
+
+        // =========================
+        // SIMPAN INSTRUKTUR
+        // =========================
+
+        $paketPt->instruktur_id = $request->instruktur_id;
+
+        $paketPt->lokasi_id = $member->lokasi_id;
+
+        $paketPt->save();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Instruktur berhasil dipilih'
+        ], 200);
     }
 }
