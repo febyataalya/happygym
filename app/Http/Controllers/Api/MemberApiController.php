@@ -502,21 +502,57 @@ class MemberApiController extends Controller
         return response()->json(['status' => 'success', 'data' => $paket], 200);
     }
 
-    public function getCoachCabang($member_id)
-    {
-        $member = Member::find($member_id);
-        // Ambil instruktur yang lokasinya sama dengan cabang member
-        $coaches = Instruktur::where('lokasi_id', $member->lokasi_id)->get();
-        return response()->json(['status' => 'success', 'data' => $coaches], 200);
-        $coach->rating =
-    round(
-        InstrukturRating::where(
-            'instruktur_id',
-            $coach->instruktur_id
-        )->avg('rating'),
-        1
-    );
+public function getCoachCabang($member_id)
+{
+    // =========================
+    // AMBIL MEMBER
+    // =========================
+
+    $member = Member::find($member_id);
+
+    if (!$member) {
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Member tidak ditemukan'
+        ], 404);
     }
+
+    // =========================
+    // AMBIL COACH SESUAI CABANG
+    // =========================
+
+    $coaches = Instruktur::where(
+        'lokasi_id',
+        $member->lokasi_id
+    )->get();
+
+    // =========================
+    // TAMBAHKAN RATING
+    // =========================
+
+    foreach ($coaches as $coach) {
+
+        $coach->rating = round(
+
+            InstrukturRating::where(
+                'instruktur_id',
+                $coach->instruktur_id
+            )->avg('rating') ?? 0,
+
+            1
+        );
+    }
+
+    // =========================
+    // RESPONSE
+    // =========================
+
+    return response()->json([
+        'status' => 'success',
+        'data' => $coaches
+    ], 200);
+}
 
     public function pilihCoachPt(Request $request)
     {
