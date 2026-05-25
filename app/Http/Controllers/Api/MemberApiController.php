@@ -1,994 +1,430 @@
-<?php
-
-namespace App\Http\Controllers\Api;
-
-use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
-use Midtrans\Config;
-use Midtrans\Snap;
-
-// --- SEMUA MODEL YANG DIBUTUHKAN ---
-use App\Models\Member;
-use App\Models\Paket;
-use App\Models\Instruktur;
-use App\Models\PemesananPaket;
-use App\Models\Pembayaran;
-use App\Models\JadwalLatihan;
-use App\Models\BookingAbsensi;
-use App\Models\Presensi;
-use App\Models\MemberPaketPt;
-use App\Models\KetersediaanInstruktur;
-use App\Models\BookingPt;
-use App\Models\Lokasi; // <--- Pastikan ini ada
-use App\Models\KunjunganGym;
-
-class MemberApiController extends Controller
-{
-    // =========================================================================
-    // BAGIAN 1: AUTENTIKASI & PROFIL (POIN 2, 3, 4, 11, 12)
-    // =========================================================================
-
-    public function register(Request $request)
-    {
-        $request->validate([
-            'nama' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:members,email',
-            'no_hp' => 'required|string|max:15',
-            'password' => 'required|string|min:6',
-            'lokasi_id' => 'nullable',
-            'foto' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048'
-        ]);
-
-        $fotoPath = null;
-        if ($request->hasFile('foto')) {
-            $fotoPath = $request->file('foto')->store('members', 'public');
-        }
-
-        $member = Member::create([
-            'nama' => $request->nama,
-            'email' => $request->email,
-            'no_hp' => $request->no_hp,
-            'password' => Hash::make($request->password),
-            'status_membership' => 'Tidak Aktif',
-            'lokasi_id' => $request->lokasi_id,
-            'foto' => $fotoPath
-        ]);
-
-        return response()->json(['status' => 'success', 'message' => 'Registrasi berhasil!', 'data' => $member], 201);
-    }
-
-    public function getLokasis()
-    {
-        $lokasis = Lokasi::all();
-        
-        // Terjemahkan nama kolom database (nama_cabang) ke format Android (nama_lokasi)
-        $formattedLokasi = $lokasis->map(function ($cabang) {
-            return [
-                'lokasi_id' => $cabang->lokasi_id, 
-                'nama_lokasi' => $cabang->nama_cabang // <--- INI KUNCINYA
-            ];
-        });
-        
-        return response()->json($formattedLokasi, 200);
-    }
-
-    public function login(Request $request)
-    {
-        $member = Member::where('email', $request->email)->first();
-        if (!$member || !Hash::check($request->password, $member->password)) {
-            return response()->json(['status' => 'error', 'message' => 'Email atau Password salah'], 401);
-        }
-
-        if ($member->foto) {
-            $member->foto_url = asset('storage/' . $member->foto);
-        } else {
-            $member->foto_url = null;
-        }
-
-        return response()->json(['status' => 'success', 'message' => 'Login berhasil', 'data' => $member], 200);
-    }
-
-    public function getProfile($id)
-    {
-        $member = Member::with(['paketPts.instruktur'])->find($id);
-        if (!$member) return response()->json(['status' => 'error', 'message' => 'Member tidak ditemukan'], 404);
-        
-        // Cari paket terakhir yang dibeli dan disetujui (opsional legacy)
-        $latestPemesanan = \App\Models\PemesananPaket::where('member_id', $id)
-                            ->where('status_persetujuan', 'Disetujui')
-                            ->orderBy('tanggal_pesan', 'desc')
-                            ->with('paket')
-                            ->first();
-
-        // Tambahkan properti baru secara dinamis untuk dikirim ke Android
-        $member->nama_paket_aktif = $latestPemesanan && $latestPemesanan->paket ? $latestPemesanan->paket->nama_paket : null;
-
-        // Tambahan fitur: Info Masa Aktif dan PT
-        $member->masa_aktif_gym = ($member->status_membership == 'Aktif' && $member->tanggal_berakhir_member) 
-            ? 'Aktif s/d ' . \Carbon\Carbon::parse($member->tanggal_berakhir_member)->format('d M Y') 
-            : 'Tidak Aktif';
-
-        $pt_info = 'Tidak Ada / Habis';
-        if ($member->paketPts && $member->paketPts->count() > 0) {
-            $pt = $member->paketPts->first();
-            $coach = $pt->instruktur ? $pt->instruktur->nama : 'Belum Ada';
-            $pt_info = "Sisa " . $pt->sisa_sesi . " Sesi (Coach: " . $coach . ")";
-        }
-        $member->informasi_paket_pt = $pt_info;
-        
-        if ($member->foto) {
-            $member->foto_url = asset('storage/' . $member->foto);
-        } else {
-            $member->foto_url = null;
-        }
-
-        return response()->json(['status' => 'success', 'data' => $member], 200);
-    }
-
-    public function getDataFisik($id)
-    {
-        $data = \App\Models\DataFisikMember::where('member_id', $id)
-            ->orderBy('created_at', 'desc')
-            ->get();
-        return response()->json(['status' => 'success', 'data' => $data], 200);
-    }
-
-    public function simpanDataFisik(Request $request, $memberId)
-    {
-        $request->validate([
-            'tinggi_badan' => 'required|numeric',
-            'berat_badan' => 'required|numeric',
-            'umur' => 'required|integer',
-            'massa_otot' => 'nullable|numeric',
-        ]);
-
-        $data = \App\Models\DataFisikMember::create([
-            'member_id' => $memberId,
-            'tinggi_badan' => $request->tinggi_badan,
-            'berat_badan' => $request->berat_badan,
-            'umur' => $request->umur,
-            'massa_otot' => $request->massa_otot
-        ]);
-
-        return response()->json(['status' => 'success', 'message' => 'Data fisik berhasil disimpan', 'data' => $data], 201);
-    }
-
-    public function getPengumuman()
-    {
-        $data = \App\Models\Pengumuman::where('tampil_member', true)
-            ->orderBy('tanggal_post', 'desc')
-            ->get();
-        return response()->json(['status' => 'success', 'data' => $data], 200);
-    }
-
-    public function updateProfile(Request $request, $id)
-    {
-        // =========================
-        // CARI MEMBER
-        // =========================
-
-        $member = Member::find($id);
-
-        // jika member tidak ditemukan
-        if (!$member) {
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Member tidak ditemukan'
-            ], 404);
-        }
-
-        // =========================
-        // SIMPAN LOKASI LAMA
-        // =========================
-
-        $lokasiLama = $member->lokasi_id;
-
-        // =========================
-        // VALIDASI
-        // =========================
-
-        $request->validate([
-            'nama'       => 'required|string|max:255',
-            'no_hp'      => 'required|string|max:15',
-            'email'      => 'required|string|email|unique:members,email,' . $id . ',member_id',
-            'password'   => 'nullable|string|min:6',
-            'lokasi_id'  => 'nullable',
-            'foto'       => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048'
-        ]);
-
-        // =========================
-        // UPDATE DATA MEMBER
-        // =========================
-
-        $member->nama      = $request->nama;
-        $member->email     = $request->email;
-        $member->no_hp     = $request->no_hp;
-        $member->lokasi_id = $request->lokasi_id;
-
-        // =========================
-        // UPDATE PASSWORD
-        // =========================
-
-        if ($request->filled('password')) {
-
-            $member->password =
-                Hash::make($request->password);
-        }
-
-        // =========================
-        // UPDATE FOTO
-        // =========================
-
-        if ($request->hasFile('foto')) {
-
-            // hapus foto lama
-            if (
-                $member->foto &&
-                \Storage::disk('public')->exists($member->foto)
-            ) {
-
-                \Storage::disk('public')
-                    ->delete($member->foto);
-            }
-
-            // upload foto baru
-            $member->foto = $request
-                ->file('foto')
-                ->store('members', 'public');
-        }
-
-        // =========================
-        // SIMPAN MEMBER
-        // =========================
-
-        $member->save();
-
-        // =========================
-        // CEK PERUBAHAN CABANG
-        // =========================
-
-        if ($lokasiLama != $request->lokasi_id) {
-
-            // =========================
-            // CARI PAKET PT AKTIF TERBARU
-            // =========================
-
-            $paketPtAktif = MemberPaketPt::where(
-                'member_id',
-                $member->member_id
-            )
-            ->where('sisa_sesi', '>', 0)
-            ->latest('member_paket_id')
-            ->first();
-
-            // =========================
-            // RESET COACH
-            // =========================
-
-            if ($paketPtAktif) {
-
-                $paketPtAktif->instruktur_id = null;
-
-                $paketPtAktif->save();
-            }
-        }
-
-        // =========================
-        // REFRESH DATA MEMBER
-        // =========================
-
-        $member->refresh();
-
-        // =========================
-        // FOTO URL
-        // =========================
-
-        if ($member->foto) {
-
-            $member->foto_url =
-                asset('storage/' . $member->foto);
-
-        } else {
-
-            $member->foto_url = null;
-        }
-
-        // =========================
-        // NAMA CABANG
-        // =========================
-
-        $lokasi = Lokasi::find(
-            $member->lokasi_id
-        );
-
-        $member->nama_lokasi = $lokasi
-            ? $lokasi->nama_cabang
-            : null;
-
-        // =========================
-        // RESPONSE
-        // =========================
-
-        return response()->json([
-            'status'  => 'success',
-            'message' => 'Profil berhasil diperbarui',
-            'data'    => $member
-        ], 200);
-    }
-
-
-    // =========================================================================
-    // BAGIAN 2: MASTER DATA & TRANSAKSI (POIN 5 & 6)
-    // =========================================================================
-
-    public function getPakets()
-    {
-        $pakets = Paket::all()->map(function($paket) {
-            $diskonAktif = $paket->harga_diskon && $paket->tanggal_akhir_diskon
-                && Carbon::now()->startOfDay()->lte(Carbon::parse($paket->tanggal_akhir_diskon)->startOfDay());
-            return [
-                'paket_id'             => $paket->paket_id,
-                'nama_paket'           => $paket->nama_paket,
-                'jenis'                => $paket->jenis,
-                'harga'                => $paket->harga,
-                'durasi'               => $paket->durasi,
-                'harga_diskon'         => $diskonAktif ? $paket->harga_diskon : null,
-                'tanggal_akhir_diskon' => $diskonAktif ? $paket->tanggal_akhir_diskon : null,
-                'is_diskon_aktif'      => $diskonAktif,
-            ];
-        });
-        return response()->json(['status' => 'success', 'data' => $pakets], 200);
-    }
-
-    public function getDaftarInstruktur()
-    {
-        // Poin 6: Menampilkan foto, nama, spesialisasi
-        $instruktur = Instruktur::all();
-        return response()->json(['status' => 'success', 'data' => $instruktur], 200);
-    }
-
-    public function beliPaket(Request $request)
-    {
-        $request->validate(['member_id' => 'required', 'paket_id' => 'required']);
-        $member = Member::find($request->member_id);
-        $paket = Paket::find($request->paket_id);
-
-        if (!$member || !$paket) return response()->json(['status' => 'error', 'message' => 'Data tidak valid'], 404);
-
-        $pemesanan = PemesananPaket::create([
-            'member_id' => $member->member_id,
-            'paket_id' => $paket->paket_id,
-            'status_persetujuan' => 'Pending',
-            'tanggal_pesan' => now()->toDateString(),
-        ]);
-
-        $orderId = 'GYM-' . $pemesanan->getKey() . '-' . time();
-
-        Config::$serverKey = config('midtrans.server_key');
-        Config::$isProduction = config('midtrans.is_production');
-        Config::$isSanitized = config('midtrans.is_sanitized');
-        Config::$is3ds = config('midtrans.is_3ds');
-
-        $diskonAktif = $paket->harga_diskon && $paket->tanggal_akhir_diskon
-            && Carbon::now()->startOfDay()->lte(Carbon::parse($paket->tanggal_akhir_diskon)->startOfDay());
-        $hargaBayar = $diskonAktif ? $paket->harga_diskon : $paket->harga;
-
-        $params = [
-            'transaction_details' => ['order_id' => $orderId, 'gross_amount' => (int) $hargaBayar],
-            'customer_details'    => ['first_name' => $member->nama, 'email' => $member->email, 'phone' => $member->no_hp]
-        ];
-
+package com.happygym.member.ui
+
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.happygym.member.HappyRed
+import com.happygym.member.data.BookingPtData
+import com.happygym.member.data.InstrukturData
+import com.happygym.member.data.KetersediaanData
+import com.happygym.member.data.MemberPaketPtData
+import com.happygym.member.network.ApiConfig
+import coil.compose.AsyncImage
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.launch
+import java.util.Calendar
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun InstrukturScreen(memberId: Int, onOpenDrawer: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    // State Booking (Tab 0)
+    var paketPt by remember { mutableStateOf<MemberPaketPtData?>(null) }
+    var listCoachCabang by remember { mutableStateOf<List<InstrukturData>>(emptyList()) }
+    var inputDate by remember { mutableStateOf("") }
+    var inputTime by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+    var selectedCoach by remember { mutableStateOf<InstrukturData?>(null) }
+    var isSubmittingCoach by remember { mutableStateOf(false) }
+
+    // State Status & Negosiasi (Tab 1)
+    var listBooking by remember { mutableStateOf<List<BookingPtData>>(emptyList()) }
+    var listJadwalTersedia by remember { mutableStateOf<List<KetersediaanData>>(emptyList()) }
+    var showDialog by remember { mutableStateOf(false) }
+    var selectedBookingToReschedule by remember { mutableStateOf<BookingPtData?>(null) }
+    var inputDateDialog by remember { mutableStateOf("") }
+    var inputTimeDialog by remember { mutableStateOf("") }
+    var isSubmittingStatus by remember { mutableStateOf(false) }
+
+    LaunchedEffect(memberId, refreshTrigger) {
+        isLoading = true
         try {
-            $snapToken = Snap::getSnapToken($params);
-            return response()->json(['status' => 'success', 'snap_token' => $snapToken, 'order_id' => $orderId], 200);
-        } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+            // 1. Load Paket PT Aktif
+            val resPaket = ApiConfig.getApiService().getPaketPtAktif(memberId)
+            if (resPaket.isSuccessful && resPaket.body()?.data?.isNotEmpty() == true) {
+                paketPt = resPaket.body()?.data?.get(0)
+            } else {
+                paketPt = null
+            }
+
+            // 2. SELALU Load Daftar Coach sesuai cabang member saat ini
+            // Agar saat tombol "Ganti Coach" diklik, datanya sudah siap
+            val resCoach = ApiConfig.getApiService().getCoachCabang(memberId)
+            if (resCoach.isSuccessful) {
+                listCoachCabang = resCoach.body()?.data ?: emptyList()
+            }
+
+            // 3. Load Status Booking
+            val resStatus = ApiConfig.getApiService().getRiwayatBookingPt(memberId)
+            if (resStatus.isSuccessful) {
+                listBooking = resStatus.body()?.data?.filter { it.status in listOf("Pending", "Negotiating", "Approved") } ?: emptyList()
+            }
+
+            // 4. Load Jadwal Tersedia Coach
+            val resJadwal = ApiConfig.getApiService().getInstrukturPtTersedia(memberId)
+            if (resJadwal.isSuccessful) {
+                listJadwalTersedia = resJadwal.body()?.data ?: emptyList()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, "Gagal memuat data", Toast.LENGTH_SHORT).show()
+        } finally {
+            isLoading = false
         }
     }
 
-    public function midtransCallback(Request $request)
-    {
-        $serverKey = config('midtrans.server_key');
-        $hashed = hash("sha512", $request->order_id . $request->status_code . $request->gross_amount . $serverKey);
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Booking Instruktur PT") },
+                navigationIcon = { IconButton(onClick = onOpenDrawer) { Icon(Icons.Default.Menu, "Menu") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = HappyRed, titleContentColor = Color.White, navigationIconContentColor = Color.White)
+            )
+        }
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFFF8F9FA))) {
+            TabRow(selectedTabIndex = selectedTab, containerColor = Color.White, contentColor = HappyRed) {
+                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Pengajuan Latihan", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal) })
+                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Status Pengajuan", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal) })
+            }
 
-        if ($hashed == $request->signature_key) {
-            if ($request->transaction_status == 'capture' || $request->transaction_status == 'settlement') {
-                
-                $orderParts = explode('-', $request->order_id);
-                $pemesananId = $orderParts[1];
-                $pemesanan = PemesananPaket::with('paket')->find($pemesananId);
-                
-                if ($pemesanan && $pemesanan->status_persetujuan == 'Pending') {
-                    
-                    // 1. Ubah status pemesanan
-                    $pemesanan->status_persetujuan = 'Disetujui';
-                    $pemesanan->save();
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = HappyRed) }
+            } else {
+                Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                    if (selectedTab == 0) {
+                        // TAB PENGJUAN JADWAL
+                        if (paketPt == null) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("Oops!", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = HappyRed)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Anda belum memiliki Paket PT aktif atau sisa sesi habis.", textAlign = TextAlign.Center, color = Color.Gray)
+                                }
+                            }
+                        } else if (paketPt?.instruktur_id == null) {
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Text("Pilih Personal Trainer Anda", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Pilih coach yang akan mendampingi Anda. Tidak dapat diganti setelah dipilih.", fontSize = 14.sp, color = Color.Gray)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                
+                                LazyColumn(modifier = Modifier.weight(1f)) {
+                                    items(listCoachCabang) { c ->
+                                        val isSelected = selectedCoach == c
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(bottom = 12.dp)
+                                                .clickable { selectedCoach = c },
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = if (isSelected) HappyRed.copy(alpha = 0.1f) else Color.White
+                                            )
+                                        ) {
+                                            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                if (c.foto_url != null) {
+                                                    AsyncImage(
+                                                        model = c.foto_url,
+                                                        contentDescription = "Foto Coach",
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.size(70.dp).clip(CircleShape).background(Color.LightGray)
+                                                    )
+                                                } else {
+                                                    Box(modifier = Modifier.size(70.dp).clip(CircleShape).background(Color.LightGray), contentAlignment = Alignment.Center) {
+                                                        Text("No Photo", fontSize = 12.sp)
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.width(16.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = "Coach ${c.nama}", 
+                                                        fontWeight = FontWeight.Bold, 
+                                                        fontSize = 18.sp,
+                                                        color = if (isSelected) HappyRed else Color.Black
+                                                    )
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text(
+                                                        text = c.spesialisasi ?: "Instruktur Umum", 
+                                                        color = Color.Gray, 
+                                                        fontSize = 14.sp
+                                                    )
+                                                }
+                                                
+                                                if (isSelected) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.CheckCircle,
+                                                        contentDescription = "Terpilih",
+                                                        tint = HappyRed,
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
 
-                    // 2. Catat ke Riwayat Pembayaran (Poin 10)
-                    Pembayaran::create([
-                        'pemesanan_id' => $pemesanan->pemesanan_id,
-                        'member_id' => $pemesanan->member_id,
-                        'order_id' => $request->order_id,
-                        'metode' => $request->payment_type,
-                        'jumlah' => $request->gross_amount,
-                        'status' => 'settlement',
-                        'tanggal_bayar' => now(),
-                    ]);
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = {
+                                        if (selectedCoach == null) return@Button
+                                        scope.launch {
+                                            isSubmittingCoach = true
+                                            try {
+                                                val res = ApiConfig.getApiService().pilihCoachPt(paketPt!!.member_paket_id, selectedCoach!!.instruktur_id)
+                                                if (res.isSuccessful) refreshTrigger++
+                                            } catch (e: Exception) {} finally { isSubmittingCoach = false }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = HappyRed),
+                                    enabled = !isSubmittingCoach && selectedCoach != null
+                                ) { Text("SIMPAN COACH") }
+                            }
+                        } else {
+                            // FORM PENGAJUAN
+                            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                                Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFFF3E5F5), shape = RoundedCornerShape(8.dp)) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Sisa Kuota PT Anda: ${paketPt!!.sisa_sesi} Sesi", color = Color(0xFF6A1B9A), fontWeight = FontWeight.Bold)
+                                            
+                                            // Tombol Ganti Coach (Jika ingin pilih ulang di cabang baru)
+                                            if (paketPt!!.sisa_sesi == paketPt!!.paket?.jumlah_sesi) {
 
-                    // 3. LOGIKA KUNCI: Bedakan Paket Gym Umum vs Personal Trainer
-                    $paket = $pemesanan->paket;
-                    $member = Member::find($pemesanan->member_id); // <--- Tarik data member di sini
+                                                IconButton(
+                                                    onClick = {
+                                                        // boleh pilih ulang coach hanya di awal sesi
+                                                        paketPt = paketPt!!.copy(instruktur_id = null)
+                                                    },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Edit,
+                                                        contentDescription = "Ganti Coach",
+                                                        tint = Color(0xFF6A1B9A),
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (paketPt!!.instruktur?.foto_url != null) {
+                                                AsyncImage(
+                                                    model = paketPt!!.instruktur!!.foto_url,
+                                                    contentDescription = "Foto Coach",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.size(50.dp).clip(CircleShape).background(Color.White)
+                                                )
+                                            } else {
+                                                Box(modifier = Modifier.size(50.dp).clip(CircleShape).background(Color.White), contentAlignment = Alignment.Center) {
+                                                    Text("No Photo", fontSize = 10.sp)
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column {
+                                                Text("Coach: ${paketPt!!.instruktur?.nama ?: "..."}", color = Color.DarkGray, fontWeight = FontWeight.Bold)
+                                                Text(paketPt!!.instruktur?.spesialisasi ?: "Instruktur Umum", color = Color.Gray, fontSize = 12.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text("Jadwal Tersedia Coach", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                if (listJadwalTersedia.isEmpty()) {
+                                    Text("Belum ada jadwal ketersediaan yang diinput coach.", color = Color.Gray, fontSize = 14.sp)
+                                } else {
+                                    LazyRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        contentPadding = PaddingValues(vertical = 4.dp)
+                                    ) {
+                                        items(listJadwalTersedia) { jadwal ->
+                                            val isSelected = inputDate == jadwal.tanggal && inputTime == jadwal.jam_mulai
+                                            FilterChip(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    inputDate = jadwal.tanggal
+                                                    inputTime = jadwal.jam_mulai
+                                                },
+                                                label = {
+                                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 4.dp)) {
+                                                        Text(jadwal.tanggal, fontSize = 11.sp)
+                                                        Text(jadwal.jam_mulai, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                    }
+                                                },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = HappyRed,
+                                                    selectedLabelColor = Color.White
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
 
-                    if ($paket->jenis == 'Personal Training' || str_contains(strtolower($paket->nama_paket), 'pt')) {
-                        // A. Jika beli PT -> Tambah kuota sesi di tabel khusus PT
-                        MemberPaketPt::create([
-                            'member_id' => $pemesanan->member_id,
-                            'paket_id' => $paket->paket_id,
-                            'sisa_sesi' => $paket->jumlah_sesi ?? 12, 
-                            'expired_date' => Carbon::now()->addDays($paket->durasi ?? 30)->toDateString(),
-                            'status' => 'Aktif'
-                        ]);
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text("Ajukan Jadwal Latihan", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Pilih tanggal dan jam menggunakan picker di bawah ini.", fontSize = 14.sp, color = Color.Gray)
+                                Spacer(modifier = Modifier.height(16.dp))
 
-                        // B. PERBAIKAN: Aktifkan juga status membership utamanya agar Dashboard Hijau!
-                        $member->status_membership = 'Aktif';
-                        $member->tanggal_mulai_member = Carbon::now()->toDateString();
-                        // Opsional: Set masa aktif member sesuai durasi paket PT
-                        $member->tanggal_berakhir_member = Carbon::now()->addDays($paket->durasi ?? 30)->toDateString();
-                        $member->save();
-
+                                val cal = Calendar.getInstance()
+                                OutlinedTextField(
+                                    value = inputDate,
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    label = { Text("Pilih Tanggal (Ketuk)") },
+                                    modifier = Modifier.fillMaxWidth().clickable {
+                                        DatePickerDialog(context, { _, y, m, d -> inputDate = "$y-${String.format("%02d", m+1)}-${String.format("%02d", d)}" }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+                                    },
+                                    enabled = false,
+                                    colors = OutlinedTextFieldDefaults.colors(disabledTextColor = Color.Black, disabledBorderColor = Color.Gray, disabledLabelColor = Color.Gray)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                OutlinedTextField(
+                                    value = inputTime,
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    label = { Text("Pilih Jam (Ketuk)") },
+                                    modifier = Modifier.fillMaxWidth().clickable {
+                                        TimePickerDialog(context, { _, h, m -> inputTime = "${String.format("%02d", h)}:${String.format("%02d", m)}" }, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), true).show()
+                                    },
+                                    enabled = false,
+                                    colors = OutlinedTextFieldDefaults.colors(disabledTextColor = Color.Black, disabledBorderColor = Color.Gray, disabledLabelColor = Color.Gray)
+                                )
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Button(
+                                    onClick = {
+                                        if (inputDate.isEmpty() || inputTime.isEmpty()) { Toast.makeText(context, "Lengkapi!", Toast.LENGTH_SHORT).show(); return@Button }
+                                        scope.launch {
+                                            try {
+                                                val res = ApiConfig.getApiService().bookingPt(paketPt!!.member_paket_id, inputDate, inputTime)
+                                                if (res.isSuccessful) { 
+                                                    Toast.makeText(context, "Pengajuan Terkirim!", Toast.LENGTH_SHORT).show() 
+                                                    inputDate = ""
+                                                    inputTime = ""
+                                                    refreshTrigger++
+                                                }
+                                            } catch (e: Exception) {}
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = HappyRed)
+                                ) { Text("Ajukan Jadwal", fontWeight = FontWeight.Bold) }
+                                Spacer(modifier = Modifier.height(50.dp))
+                            }
+                        }
                     } else {
-                        // Jika beli Gym Umum -> Aktifkan Member & Set Tanggal Habis
-                        $member->status_membership = 'Aktif';
-                        $member->tanggal_mulai_member = Carbon::now()->toDateString();
-                        $member->tanggal_berakhir_member = Carbon::now()->addDays($paket->durasi ?? 30)->toDateString();
-                        $member->save();
+                        // TAB STATUS & NEGOSIASI
+                        if (listBooking.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Belum ada status pengajuan.", color = Color.Gray) }
+                        } else {
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                items(listBooking) { booking ->
+                                    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
+                                        Column(modifier = Modifier.padding(16.dp)) {
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                Text("${booking.tanggal_sesi}", fontWeight = FontWeight.Bold)
+                                                Surface(color = Color(0xFFE3F2FD), shape = RoundedCornerShape(4.dp)) {
+                                                    Text(booking.status, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), fontSize = 12.sp, color = Color(0xFF1565C0))
+                                                }
+                                            }
+                                            Text("Jam: ${booking.jam_sesi}", fontSize = 14.sp)
+                                            Text("Coach: ${booking.instruktur?.nama ?: "-"}", fontSize = 14.sp, color = Color.Gray)
+                                            if (booking.status == "Negotiating") {
+                                                Spacer(modifier = Modifier.height(12.dp))
+                                                Surface(color = Color(0xFFFFF3E0), shape = RoundedCornerShape(8.dp)) {
+                                                    Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
+                                                        Text("Saran Coach:", fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                                                        Text("Alasan: ${booking.alasan_penolakan ?: "-"}", fontSize = 13.sp)
+                                                        Text("Coba: ${booking.saran_tanggal} Jam ${booking.saran_jam}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.height(12.dp))
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Button(onClick = { scope.launch { ApiConfig.getApiService().tanggapanNegosiasiPt(booking.booking_id, "terima"); refreshTrigger++ }}, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = HappyRed)) { Text("Terima") }
+                                                    OutlinedButton(onClick = { selectedBookingToReschedule = booking; showDialog = true; inputDateDialog=""; inputTimeDialog="" }, modifier = Modifier.weight(1f)) { Text("Bisa Lain Waktu?") }
+                                                }
+                                            } else if (booking.status == "Approved") {
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                OutlinedButton(onClick = { selectedBookingToReschedule = booking; showDialog = true; inputDateDialog=""; inputTimeDialog="" }, modifier = Modifier.fillMaxWidth()) { Text("Reschedule") }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-        return response()->json(['message' => 'Callback diproses']);
-    }
 
-
-    // =========================================================================
-    // BAGIAN 3: JADWAL & BOOKING GYM UMUM (KELAS)
-    // =========================================================================
-
-    public function getJadwalGymUmum()
-    {
-        $jadwal = JadwalLatihan::with('instruktur')->get();
-        return response()->json(['status' => 'success', 'data' => $jadwal], 200);
-    }
-
-    public function bookingGymUmum(Request $request)
-    {
-        $request->validate(['member_id' => 'required', 'jadwal_id' => 'required']);
-        $jadwal = JadwalLatihan::findOrFail($request->jadwal_id);
-
-        $jumlahBooking = BookingAbsensi::where('jadwal_id', $request->jadwal_id)->where('status_booking', 'Booked')->count();
-        if ($jumlahBooking >= $jadwal->kuota) {
-            return response()->json(['status' => 'error', 'message' => 'Kuota penuh'], 400);
+        // DIALOG RESCHEDULE DENGAN PICKER
+        if (showDialog && selectedBookingToReschedule != null) {
+            val cal = Calendar.getInstance()
+            AlertDialog(
+                onDismissRequest = { showDialog = false },
+                title = { Text("Ajukan Ulang / Reschedule") },
+                text = {
+                    Column {
+                        Text("Terakhir Diajukan: ${selectedBookingToReschedule?.tanggal_sesi} ${selectedBookingToReschedule?.jam_sesi}", fontSize = 13.sp, color = Color.Gray)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = inputDateDialog, onValueChange = {}, readOnly = true, label = { Text("Tanggal Baru (Ketuk)") },
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                DatePickerDialog(context, { _, y, m, d -> inputDateDialog = "$y-${String.format("%02d", m+1)}-${String.format("%02d", d)}" }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+                            }, enabled = false, colors = OutlinedTextFieldDefaults.colors(disabledTextColor = Color.Black, disabledBorderColor = Color.Gray)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = inputTimeDialog, onValueChange = {}, readOnly = true, label = { Text("Jam Baru (Ketuk)") },
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                TimePickerDialog(context, { _, h, m -> inputTimeDialog = "${String.format("%02d", h)}:${String.format("%02d", m)}" }, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), true).show()
+                            }, enabled = false, colors = OutlinedTextFieldDefaults.colors(disabledTextColor = Color.Black, disabledBorderColor = Color.Gray)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        if (inputDateDialog.isEmpty() || inputTimeDialog.isEmpty()) return@Button
+                        scope.launch {
+                            isSubmittingStatus = true
+                            try {
+                                val res = ApiConfig.getApiService().tanggapanNegosiasiPt(selectedBookingToReschedule!!.booking_id, "reschedule", inputDateDialog, inputTimeDialog)
+                                if (res.isSuccessful) { showDialog = false; refreshTrigger++ }
+                            } catch (e: Exception) {} finally { isSubmittingStatus = false }
+                        }
+                    }, colors = ButtonDefaults.buttonColors(containerColor = HappyRed)) { Text("Ajukan") }
+                },
+                dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Batal") } }
+            )
         }
-
-        $booking = BookingAbsensi::create([
-            'member_id' => $request->member_id,
-            'jadwal_id' => $request->jadwal_id,
-            'instruktur_id' => $jadwal->instruktur_id,
-            'tanggal' => now()->toDateString(),
-            'status_booking' => 'Booked',
-            'status_hadir' => 'Belum Absen'
-        ]);
-
-        return response()->json(['status' => 'success', 'message' => 'Berhasil booking kelas', 'data' => $booking], 201);
-    }
-
-
-    // =========================================================================
-    // BAGIAN 4: JADWAL & BOOKING PERSONAL TRAINER (POIN 7)
-    // =========================================================================
-
-    public function getPaketPtAktif($member_id)
-    {
-        // Tambahkan with('instruktur')
-        $paket = MemberPaketPt::with('instruktur')
-            ->where('member_id', $member_id)
-            ->where('status', 'Aktif')->where('sisa_sesi', '>', 0)
-            ->where('expired_date', '>=', Carbon::now()->toDateString())->get();
-        return response()->json(['status' => 'success', 'data' => $paket], 200);
-    }
-
-    public function getCoachCabang($member_id)
-    {
-        $member = Member::find($member_id);
-        // Ambil instruktur yang lokasinya sama dengan cabang member
-        $coaches = Instruktur::where('lokasi_id', $member->lokasi_id)->get();
-        return response()->json(['status' => 'success', 'data' => $coaches], 200);
-    }
-
-    public function pilihCoachPt(Request $request)
-    {
-        $request->validate([
-            'member_paket_id' => 'required',
-            'instruktur_id' => 'required'
-        ]);
-
-        $paket = MemberPaketPt::find(
-            $request->member_paket_id
-        );
-
-        if (!$paket) {
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Paket PT tidak ditemukan'
-            ], 404);
-        }
-
-        $member = Member::find($paket->member_id);
-
-        $instruktur = Instruktur::find(
-            $request->instruktur_id
-        );
-
-        if (!$instruktur) {
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Coach tidak ditemukan'
-            ], 404);
-        }
-
-        // validasi cabang
-        if (
-            $instruktur->lokasi_id !=
-            $member->lokasi_id
-        ) {
-
-            return response()->json([
-                'status' => 'error',
-                'message' =>
-                    'Coach tidak sesuai cabang member'
-            ], 400);
-        }
-
-        // =========================
-        // LOCK COACH
-        // =========================
-
-        // jika sudah pernah pilih coach
-        // dan sesi masih berjalan
-        if (
-            $paket->instruktur_id != null &&
-            $paket->sisa_sesi > 0
-        ) {
-
-            return response()->json([
-                'status' => 'error',
-                'message' =>
-                    'Coach terkunci sampai sesi selesai'
-            ], 400);
-        }
-
-        // =========================
-        // SIMPAN COACH
-        // =========================
-
-        $paket->instruktur_id =
-            $request->instruktur_id;
-
-        $paket->save();
-
-        return response()->json([
-            'status' => 'success',
-            'message' =>
-                'Coach berhasil dipilih'
-        ], 200);
-    }
-
-    public function getInstrukturPtTersedia($member_id) 
-    {
-        // 1. Cari paket PT aktif milik member ini
-        $paketPt = MemberPaketPt::where('member_id', $member_id)
-                    ->where('status', 'Aktif')
-                    ->where('sisa_sesi', '>', 0)
-                    ->first();
-
-        // 2. Jika belum punya paket atau belum memilih coach, kembalikan kosong
-        if (!$paketPt || !$paketPt->instruktur_id) {
-            return response()->json(['status' => 'success', 'data' => []], 200);
-        }
-
-        // 3. Ambil jadwal HANYA untuk instruktur yang SUDAH DIPILIH di paket tersebut
-        $tersedia = KetersediaanInstruktur::with('instruktur')
-            ->where('instruktur_id', $paketPt->instruktur_id) // <--- FILTER KUNCI
-            ->where('tanggal', '>=', Carbon::now()->toDateString())
-            ->where('is_booked', 0)
-            ->orderBy('tanggal', 'asc')->orderBy('jam_mulai', 'asc')->get();
-
-        return response()->json(['status' => 'success', 'data' => $tersedia], 200);
-    }
-
-    public function bookingPt(Request $request)
-    {
-        // =========================
-        // VALIDASI
-        // =========================
-
-        $request->validate([
-            'member_paket_id' => 'required',
-            'tanggal_sesi' => 'required|date',
-            'jam_sesi' => 'required'
-        ]);
-
-        // =========================
-        // AMBIL PAKET PT
-        // =========================
-
-        $paket = MemberPaketPt::find(
-            $request->member_paket_id
-        );
-
-        // jika paket tidak ditemukan
-        if (!$paket) {
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Paket PT tidak ditemukan'
-            ], 404);
-        }
-
-        // =========================
-        // WAJIB PILIH COACH
-        // =========================
-
-        if (!$paket->instruktur_id) {
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Anda belum memilih Coach PT'
-            ], 400);
-        }
-
-        // =========================
-        // CEK SISA SESI
-        // =========================
-
-        if ($paket->sisa_sesi <= 0) {
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Sisa sesi habis'
-            ], 400);
-        }
-
-        // =========================
-        // BUAT BOOKING
-        // =========================
-
-        $booking = BookingPt::create([
-
-            'member_paket_id' =>
-                $request->member_paket_id,
-
-            'instruktur_id' =>
-                $paket->instruktur_id,
-
-            'tanggal_sesi' =>
-                $request->tanggal_sesi,
-
-            'jam_sesi' =>
-                $request->jam_sesi,
-
-            'status' => 'Pending'
-        ]);
-
-        // =========================
-        // KURANGI SESI
-        // =========================
-
-        $paket->sisa_sesi -= 1;
-
-        // =========================
-        // JIKA SESI HABIS
-        // =========================
-
-        if ($paket->sisa_sesi <= 0) {
-
-            // unlock coach
-            $paket->instruktur_id = null;
-
-            // update status paket
-            $paket->status = 'Selesai';
-        }
-
-        // =========================
-        // SIMPAN PAKET
-        // =========================
-
-        $paket->save();
-
-        // =========================
-        // RESPONSE
-        // =========================
-
-        return response()->json([
-
-            'status' => 'success',
-
-            'message' =>
-                'Berhasil mengajukan jadwal PT',
-
-            'sisa_sesi' =>
-                $paket->sisa_sesi,
-
-            'data' => $booking
-
-        ], 200);
-    }
-
-    public function tanggapanNegosiasiPt(Request $request)
-    {
-        $request->validate([
-            'booking_id' => 'required|exists:booking_pts,booking_id',
-            'tindakan' => 'required|in:terima,reschedule'
-        ]);
-        
-        $booking = BookingPt::find($request->booking_id);
-        if ($booking->status !== 'Negotiating' && $booking->status !== 'Approved') {
-            return response()->json(['status' => 'error', 'message' => 'Status tidak valid untuk proses ini.'], 400);
-        }
-
-        if ($request->tindakan === 'terima') {
-            $booking->tanggal_sesi = $booking->saran_tanggal;
-            $booking->jam_sesi = $booking->saran_jam;
-            $booking->status = 'Approved';
-            $booking->save();
-            return response()->json(['status' => 'success', 'message' => 'Jadwal saran disetujui.']);
-        } else {
-            // reschedule (mengajukan ulang jadwal baru)
-            $request->validate([
-                'tanggal_sesi_baru' => 'required|date',
-                'jam_sesi_baru' => 'required'
-            ]);
-            $booking->tanggal_sesi = $request->tanggal_sesi_baru;
-            $booking->jam_sesi = $request->jam_sesi_baru;
-            $booking->status = 'Pending';
-            // bersihkan alasan dan saran
-            $booking->alasan_penolakan = null;
-            $booking->saran_tanggal = null;
-            $booking->saran_jam = null;
-            $booking->save();
-            return response()->json(['status' => 'success', 'message' => 'Jadwal baru berhasil diajukan.']);
-        }
-    }
-
-
-    // =========================================================================
-    // BAGIAN 5: PUSAT RIWAYAT MEMBER (POIN 10)
-    // =========================================================================
-
-    public function getRiwayatPembayaran($member_id)
-    {
-        $riwayat = Pembayaran::select('pembayarans.*', 'pakets.nama_paket')
-            ->join('pemesanan_pakets', 'pembayarans.pemesanan_id', '=', 'pemesanan_pakets.pemesanan_id')
-            ->join('pakets', 'pemesanan_pakets.paket_id', '=', 'pakets.paket_id')
-            ->where('pembayarans.member_id', $member_id)
-            ->orderBy('pembayarans.tanggal_bayar', 'desc')->get();
-        return response()->json(['status' => 'success', 'data' => $riwayat], 200);
-    }
-
-    public function getRiwayatLatihan($member_id)
-    {
-        // Poin 10: Riwayat Kehadiran Latihan Biasa (Dari tabel KunjunganGym)
-        $riwayat = KunjunganGym::where('member_id', $member_id)->orderBy('tanggal', 'desc')->orderBy('waktu_masuk', 'desc')->get();
-        return response()->json(['status' => 'success', 'data' => $riwayat], 200);
-    }
-
-    public function getRiwayatBookingPt($member_id)
-    {
-        // Poin 10: Riwayat Booking Instruktur PT
-        $riwayat = BookingPt::with(['instruktur'])
-            ->whereHas('memberPaket', function($query) use ($member_id) {
-                $query->where('member_id', $member_id);
-            })->orderBy('created_at', 'desc')->get();
-        return response()->json(['status' => 'success', 'data' => $riwayat], 200);
-    }
-
-    public function getRiwayatSesiPt($member_id)
-    {
-        // Poin Revisi Dosen: Riwayat pemotongan sesi PT secara detail
-        $riwayat = \App\Models\RiwayatPenggunaanPt::with(['booking.instruktur', 'memberPaket.paket'])
-            ->whereHas('memberPaket', function($query) use ($member_id) {
-                $query->where('member_id', $member_id);
-            })
-            ->orderBy('waktu_penggunaan', 'desc')
-            ->get();
-
-        return response()->json(['status' => 'success', 'data' => $riwayat], 200);
-    }
-
-    // =========================================================================
-    // BAGIAN 6: PRESENSI MANDIRI (CHECK-IN GEDUNG)
-    // =========================================================================
-
-    public function getStatusPresensi($member_id)
-    {
-        // Mengecek apakah hari ini member sudah check-in dan belum check-out
-        $kunjungan = KunjunganGym::where('member_id', $member_id)
-            ->where('tanggal', now()->toDateString())
-            ->where('status_kunjungan', 'Masuk')
-            ->first();
-
-        return response()->json([
-            'status' => 'success',
-            'is_check_in' => $kunjungan ? true : false,
-            'data' => $kunjungan
-        ]);
-    }
-
-    public function checkIn(Request $request)
-    {
-        $request->validate(['member_id' => 'required', 'lokasi_id' => 'required']);
-
-        // --- 1. SATPAM VALIDASI MEMBERSHIP ---
-        $member = Member::find($request->member_id);
-        
-        // Cek apakah statusnya tidak aktif, atau tanggal berakhirnya sudah lewat
-        if (!$member || $member->status_membership !== 'Aktif' || $member->tanggal_berakhir_member < now()->toDateString()) {
-            // Jika membership mati/habis, tolak Check-in!
-            return response()->json([
-                'status' => 'error', 
-                'message' => 'Gagal: Membership Anda belum aktif atau sudah kedaluwarsa. Silakan beli paket terlebih dahulu.'
-            ], 403);
-        }
-        // -------------------------------------
-
-        // --- 2. CEK DOUBLE CHECK-IN ---
-        $cekSudahMasuk = KunjunganGym::where('member_id', $request->member_id)
-                            ->where('tanggal', now()->toDateString())
-                            ->where('status_kunjungan', 'Masuk')
-                            ->first();
-
-        if ($cekSudahMasuk) {
-            return response()->json(['status' => 'error', 'message' => 'Anda sudah Check-in sebelumnya.'], 400);
-        }
-
-        // --- 3. CATAT CHECK-IN ---
-        $kunjungan = KunjunganGym::create([
-            'member_id' => $request->member_id,
-            'lokasi_id' => $request->lokasi_id,
-            'tanggal' => now()->toDateString(),
-            'waktu_masuk' => now()->toTimeString(), // Sekarang sudah pakai jam WIB yang benar!
-            'status_kunjungan' => 'Masuk'
-        ]);
-
-        return response()->json(['status' => 'success', 'message' => 'Berhasil Check-in! Selamat berlatih.', 'data' => $kunjungan], 201);
-    }
-
-    public function checkOut(Request $request)
-    {
-        // Cari data check-in hari ini yang statusnya masih 'Masuk'
-        $kunjungan = KunjunganGym::where('member_id', $request->member_id)
-            ->where('tanggal', now()->toDateString())
-            ->where('status_kunjungan', 'Masuk')
-            ->first();
-
-        if ($kunjungan) {
-            $kunjungan->waktu_keluar = now()->toTimeString();
-            $kunjungan->status_kunjungan = 'Selesai';
-            $kunjungan->save();
-            
-            return response()->json(['status' => 'success', 'message' => 'Berhasil Check-out! Hati-hati di jalan.']);
-        }
-
-        return response()->json(['status' => 'error', 'message' => 'Data tidak ditemukan / Anda belum Check-in'], 404);
-    }
-
-    public function rateInstruktur(Request $request)
-    {
-        $request->validate([
-            'member_id' => 'required|exists:members,member_id',
-            'instruktur_id' => 'required|exists:instrukturs,instruktur_id',
-            'rating' => 'required|integer|min:1|max:5',
-            'review' => 'nullable|string'
-        ]);
-
-        $rating = \App\Models\InstrukturRating::create([
-            'member_id' => $request->member_id,
-            'instruktur_id' => $request->instruktur_id,
-            'rating' => $request->rating,
-            'review' => $request->review,
-        ]);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Terima kasih atas penilaian Anda!',
-            'data' => $rating
-        ]);
-    }
-
-    public function pilihInstruktur(Request $request)
-    {
-        $request->validate([
-            'member_id' => 'required',
-            'instruktur_id' => 'required'
-        ]);
-
-        $member = Member::find($request->member_id);
-
-        if (!$member) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Member tidak ditemukan'
-            ], 404);
-        }
-
-        // Cari paket PT aktif
-        $paketPt = MemberPaketPt::where('member_id', $member->member_id)
-            ->where('status', 'Aktif')
-            ->first();
-
-        if (!$paketPt) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Paket PT aktif tidak ditemukan'
-            ], 404);
-        }
-
-        // =========================
-        // LOCK INSTRUKTUR
-        // =========================
-
-        if (
-            $paketPt->instruktur_id != null &&
-            $paketPt->sisa_sesi > 0
-        ) {
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Instruktur tidak dapat diganti sebelum sesi selesai'
-            ], 400);
-        }
-
-        // =========================
-        // VALIDASI CABANG
-        // =========================
-
-        $instruktur = Instruktur::find($request->instruktur_id);
-
-        if (!$instruktur) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Instruktur tidak ditemukan'
-            ], 404);
-        }
-
-        // instruktur harus sesuai cabang member
-        if ($instruktur->lokasi_id != $member->lokasi_id) {
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Instruktur tidak sesuai cabang member'
-            ], 400);
-        }
-
-        // =========================
-        // SIMPAN INSTRUKTUR
-        // =========================
-
-        $paketPt->instruktur_id = $request->instruktur_id;
-
-        $paketPt->lokasi_id = $member->lokasi_id;
-
-        $paketPt->save();
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Instruktur berhasil dipilih'
-        ], 200);
     }
 }
