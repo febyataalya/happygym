@@ -499,7 +499,7 @@ class MemberApiController extends Controller
 
         $request->validate([
             'member_paket_id' => 'required',
-            'instruktur_id' => 'required'
+            'instruktur_id'   => 'required'
         ]);
 
         // =========================
@@ -514,7 +514,7 @@ class MemberApiController extends Controller
         if (!$paket) {
 
             return response()->json([
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => 'Paket PT tidak ditemukan'
             ], 404);
         }
@@ -528,7 +528,7 @@ class MemberApiController extends Controller
         if (!$member) {
 
             return response()->json([
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => 'Member tidak ditemukan'
             ], 404);
         }
@@ -544,7 +544,7 @@ class MemberApiController extends Controller
         if (!$instruktur) {
 
             return response()->json([
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => 'Coach tidak ditemukan'
             ], 404);
         }
@@ -559,32 +559,13 @@ class MemberApiController extends Controller
         ) {
 
             return response()->json([
-                'status' => 'error',
-                'message' =>
-                    'Coach tidak sesuai cabang member'
+                'status'  => 'error',
+                'message' => 'Coach tidak sesuai cabang member'
             ], 400);
         }
 
         // =========================
-        // LOCK COACH
-        // =========================
-
-        // jika coach sudah dipilih
-        // dan sesi masih tersisa
-        if (
-            $paket->instruktur_id != null &&
-            $paket->sisa_sesi > 0
-        ) {
-
-            return response()->json([
-                'status' => 'error',
-                'message' =>
-                    'Coach masih terkunci sampai sesi selesai'
-            ], 400);
-        }
-
-        // =========================
-        // SIMPAN COACH
+        // SIMPAN / GANTI COACH
         // =========================
 
         $paket->instruktur_id =
@@ -592,10 +573,13 @@ class MemberApiController extends Controller
 
         $paket->save();
 
+        // =========================
+        // RESPONSE
+        // =========================
+
         return response()->json([
-            'status' => 'success',
-            'message' =>
-                'Coach berhasil dipilih dan terkunci sampai sesi selesai'
+            'status'  => 'success',
+            'message' => 'Coach berhasil dipilih'
         ], 200);
     }
 
