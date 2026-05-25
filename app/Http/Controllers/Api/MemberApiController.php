@@ -166,18 +166,25 @@ class MemberApiController extends Controller
 
     public function updateProfile(Request $request, $id)
     {
-        // Cari member
+        // =========================
+        // CARI MEMBER
+        // =========================
+
         $member = Member::find($id);
 
-        // Jika tidak ditemukan
+        // jika member tidak ditemukan
         if (!$member) {
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Member tidak ditemukan'
             ], 404);
         }
 
-        // Simpan lokasi lama
+        // =========================
+        // SIMPAN LOKASI LAMA
+        // =========================
+
         $lokasiLama = $member->lokasi_id;
 
         // =========================
@@ -185,26 +192,21 @@ class MemberApiController extends Controller
         // =========================
 
         $request->validate([
-            'nama' => 'required|string|max:255',
-            'no_hp' => 'required|string|max:15',
-            'email' => 'required|string|email|unique:members,email,' . $id . ',member_id',
-            'password' => 'nullable|string|min:6',
-            'lokasi_id' => 'nullable',
-            'foto' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048'
+            'nama'       => 'required|string|max:255',
+            'no_hp'      => 'required|string|max:15',
+            'email'      => 'required|string|email|unique:members,email,' . $id . ',member_id',
+            'password'   => 'nullable|string|min:6',
+            'lokasi_id'  => 'nullable',
+            'foto'       => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048'
         ]);
 
         // =========================
         // UPDATE DATA MEMBER
         // =========================
 
-        $member->nama = $request->nama;
-        $member->email = $request->email;
-        $member->no_hp = $request->no_hp;
-
-        // =========================
-        // UPDATE CABANG
-        // =========================
-
+        $member->nama      = $request->nama;
+        $member->email     = $request->email;
+        $member->no_hp     = $request->no_hp;
         $member->lokasi_id = $request->lokasi_id;
 
         // =========================
@@ -212,7 +214,9 @@ class MemberApiController extends Controller
         // =========================
 
         if ($request->filled('password')) {
-            $member->password = Hash::make($request->password);
+
+            $member->password =
+                Hash::make($request->password);
         }
 
         // =========================
@@ -226,7 +230,9 @@ class MemberApiController extends Controller
                 $member->foto &&
                 \Storage::disk('public')->exists($member->foto)
             ) {
-                \Storage::disk('public')->delete($member->foto);
+
+                \Storage::disk('public')
+                    ->delete($member->foto);
             }
 
             // upload foto baru
@@ -242,31 +248,41 @@ class MemberApiController extends Controller
         $member->save();
 
         // =========================
-        // CEK PINDAH CABANG
+        // CEK PERUBAHAN CABANG
         // =========================
 
         if ($lokasiLama != $request->lokasi_id) {
 
-            // Cari paket PT aktif
-            $paketPtAktif = MemberPaketPt::where('member_id', $member->member_id)
-                ->where('status', 'Aktif')
-                ->first();
+            // =========================
+            // CARI PAKET PT AKTIF
+            // =========================
 
-            // Jika ada paket aktif
+            $paketPtAktif = MemberPaketPt::where(
+                'member_id',
+                $member->member_id
+            )
+            ->where('sisa_sesi', '>', 0)
+            ->first();
+
+            // =========================
+            // RESET COACH
+            // =========================
+
             if ($paketPtAktif) {
 
-                // RESET INSTRUKTUR
+                // hapus coach lama
                 $paketPtAktif->instruktur_id = null;
 
-                // UPDATE LOKASI PT
-                $paketPtAktif->lokasi_id = $request->lokasi_id;
+                // update lokasi paket
+                $paketPtAktif->lokasi_id =
+                    $request->lokasi_id;
 
                 $paketPtAktif->save();
             }
         }
 
         // =========================
-        // REFRESH DATA
+        // REFRESH DATA MEMBER
         // =========================
 
         $member->refresh();
@@ -276,8 +292,12 @@ class MemberApiController extends Controller
         // =========================
 
         if ($member->foto) {
-            $member->foto_url = asset('storage/' . $member->foto);
+
+            $member->foto_url =
+                asset('storage/' . $member->foto);
+
         } else {
+
             $member->foto_url = null;
         }
 
@@ -285,7 +305,9 @@ class MemberApiController extends Controller
         // NAMA CABANG
         // =========================
 
-        $lokasi = Lokasi::find($member->lokasi_id);
+        $lokasi = Lokasi::find(
+            $member->lokasi_id
+        );
 
         $member->nama_lokasi = $lokasi
             ? $lokasi->nama_cabang
@@ -296,9 +318,9 @@ class MemberApiController extends Controller
         // =========================
 
         return response()->json([
-            'status' => 'success',
+            'status'  => 'success',
             'message' => 'Profil berhasil diperbarui',
-            'data' => $member
+            'data'    => $member
         ], 200);
     }
 
