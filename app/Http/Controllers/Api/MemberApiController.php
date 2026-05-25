@@ -63,17 +63,39 @@ class MemberApiController extends Controller
 
     public function getLokasis()
     {
-        $lokasis = Lokasi::all();
-        
-        // Terjemahkan nama kolom database (nama_cabang) ke format Android (nama_lokasi)
-        $formattedLokasi = $lokasis->map(function ($cabang) {
-            return [
-                'lokasi_id' => $cabang->lokasi_id, 
-                'nama_lokasi' => $cabang->nama_cabang // <--- INI KUNCINYA
-            ];
-        });
-        
-        return response()->json($formattedLokasi, 200);
+    {
+    // =========================
+    // AMBIL SEMUA LOKASI
+    // =========================
+
+    $lokasis = Lokasi::all();
+
+    // =========================
+    // FORMAT DATA
+    // =========================
+
+    $formattedLokasi = $lokasis->map(function ($cabang) {
+
+        return [
+
+            'lokasi_id'   => $cabang->lokasi_id,
+
+            'nama_lokasi' => $cabang->nama_cabang
+        ];
+    });
+
+    // =========================
+    // RESPONSE JSON
+    // =========================
+
+    return response()->json([
+
+        'status' => 'success',
+
+        'data'   => $formattedLokasi
+
+    ], 200);
+    
     }
 
     public function login(Request $request)
