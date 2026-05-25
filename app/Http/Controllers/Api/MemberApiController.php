@@ -254,7 +254,7 @@ class MemberApiController extends Controller
         if ($lokasiLama != $request->lokasi_id) {
 
             // =========================
-            // CARI PAKET PT AKTIF
+            // CARI PAKET PT AKTIF TERBARU
             // =========================
 
             $paketPtAktif = MemberPaketPt::where(
@@ -262,6 +262,7 @@ class MemberApiController extends Controller
                 $member->member_id
             )
             ->where('sisa_sesi', '>', 0)
+            ->latest('member_paket_id')
             ->first();
 
             // =========================
@@ -270,12 +271,7 @@ class MemberApiController extends Controller
 
             if ($paketPtAktif) {
 
-                // hapus coach lama
                 $paketPtAktif->instruktur_id = null;
-
-                // update lokasi paket
-                $paketPtAktif->lokasi_id =
-                    $request->lokasi_id;
 
                 $paketPtAktif->save();
             }
