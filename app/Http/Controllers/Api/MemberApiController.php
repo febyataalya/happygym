@@ -752,30 +752,6 @@ public function getCoachCabang($member_id)
             'status' => 'Pending'
         ]);
 
-        // =========================
-        // KURANGI SESI
-        // =========================
-
-        $paket->sisa_sesi -= 1;
-
-        // =========================
-        // JIKA SESI HABIS
-        // =========================
-
-        if ($paket->sisa_sesi <= 0) {
-
-            // unlock coach
-            $paket->instruktur_id = null;
-
-            // update status paket
-            $paket->status = 'Selesai';
-        }
-
-        // =========================
-        // SIMPAN PAKET
-        // =========================
-
-        $paket->save();
 
         // =========================
         // RESPONSE

@@ -120,7 +120,6 @@ class InstrukturApiController extends Controller
         'status' => 'success',
         'data' => $instruktur
     ], 200);
-}
     }
 
     public function getJadwalSaya($instruktur_id)
@@ -288,9 +287,23 @@ class InstrukturApiController extends Controller
         $memberPaket->sisa_sesi = $memberPaket->sisa_sesi - 1;
         
         if ($memberPaket->sisa_sesi <= 0) {
-            $memberPaket->status = 'Habis';
-            $memberPaket->sisa_sesi = 0; // proteksi
+
+            // =========================
+            // PAKET SELESAI
+            // =========================
+
+            $memberPaket->status = 'Selesai';
+
+            // proteksi
+            $memberPaket->sisa_sesi = 0;
+
+            // =========================
+            // UNLOCK COACH
+            // =========================
+
+            $memberPaket->instruktur_id = null;
         }
+
         $memberPaket->save();
 
         // C. Tulis ke Riwayat Penggunaan
@@ -360,7 +373,7 @@ class InstrukturApiController extends Controller
 
         return response()->json(['status' => 'success', 'data' => $klien], 200);
     }
-    
+
     public function getRatingSaya($instruktur_id)
         {
             // =========================
