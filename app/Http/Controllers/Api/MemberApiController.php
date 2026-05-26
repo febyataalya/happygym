@@ -63,7 +63,6 @@ class MemberApiController extends Controller
 
     public function getLokasis()
     {
-    {
     // =========================
     // AMBIL SEMUA LOKASI
     // =========================
