@@ -1058,26 +1058,5 @@ public function getCoachCabang($member_id)
         ], 200);
     }
 
-        public function rateInstruktur(Request $request)
-    {
-        $request->validate([
-            'member_id' => 'required',
-            'instruktur_id' => 'required',
-            'booking_id' => 'required',
-            'rating' => 'required|min:1|max:5'
-        ]);
-
-        InstrukturRating::create([
-            'member_id' => $request->member_id,
-            'instruktur_id' => $request->instruktur_id,
-            'booking_id' => $request->booking_id,
-            'rating' => $request->rating
-        ]);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Rating berhasil dikirim'
-        ]);
-    }
 
 }
