@@ -139,7 +139,7 @@ class InstrukturController extends Controller
             $q->where('instruktur_id', $id)->where('status', 'Aktif');
         })->with(['paketPts' => function($q) use ($id) {
             $q->where('instruktur_id', $id);
-        }])->get();
+        }])->paginate(15)->withQueryString();
         
         return view('instruktur.clients', compact('instruktur', 'clients'));
     }

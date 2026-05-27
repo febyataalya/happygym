@@ -35,7 +35,7 @@
                 @forelse($clients as $index => $client)
                 @php $paket = $client->paketPts->first(); @endphp
                 <tr class="hover:bg-gray-50 transition">
-                    <td class="px-6 py-4 text-sm text-gray-500">{{ $index + 1 }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">{{ $clients->firstItem() + $index }}</td>
                     <td class="px-6 py-4">
                         <div class="text-sm font-bold text-gray-900">{{ $client->nama }}</div>
                     </td>
@@ -64,5 +64,9 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+
+    <div class="mt-6">
+        {{ $clients->links() }}
     </div>
 </x-app-layout>
