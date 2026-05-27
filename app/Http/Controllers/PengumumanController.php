@@ -29,7 +29,7 @@ class PengumumanController extends Controller
         ]);
 
         $data = $request->all();
-        $data['admin_id'] = Auth::guard('admin')->id();
+        $data['admin_id'] = Auth::guard('admin')->id() ?? Auth::id() ?? \App\Models\Admin::first()->admin_id ?? 1;
         $data['tanggal_post'] = now();
         $data['tampil_web'] = $request->has('tampil_web');
         $data['tampil_member'] = $request->has('tampil_member');
