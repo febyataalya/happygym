@@ -29,7 +29,7 @@ class TransaksiController extends Controller
             });
         }
 
-        $transaksis = $query->orderBy('created_at', 'desc')->get();
+        $transaksis = $query->orderBy('created_at', 'desc')->paginate(15)->withQueryString();
 
         return view('transaksi.index', compact('transaksis', 'lokasis'));
     }

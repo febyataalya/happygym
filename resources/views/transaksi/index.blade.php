@@ -62,6 +62,7 @@
                     <th class="py-4 px-6 font-bold text-gray-700 uppercase text-xs">Jumlah</th>
                     <th class="py-4 px-6 font-bold text-gray-700 uppercase text-xs text-center">Status</th>
                     <th class="py-4 px-6 font-bold text-gray-700 uppercase text-xs text-center">Metode</th>
+                    <th class="py-4 px-6 font-bold text-gray-700 uppercase text-xs text-center">Aksi</th>
                 </tr>
             </thead>
             <tbody>
@@ -104,5 +105,9 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+
+    <div class="mt-6">
+        {{ $transaksis->links() }}
     </div>
 </x-app-layout>

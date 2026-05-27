@@ -35,7 +35,7 @@ class InstrukturController extends Controller
         }
 
         // 5. Eksekusi query
-        $instrukturs = $query->get();
+        $instrukturs = $query->paginate(15)->withQueryString();
 
         return view('instruktur.index', compact('instrukturs', 'lokasis'));
     }

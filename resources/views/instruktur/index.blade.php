@@ -95,12 +95,16 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="3" class="px-6 py-8 text-center text-gray-500 italic">
+                    <td colspan="4" class="px-6 py-8 text-center text-gray-500 italic">
                         Tidak ada instruktur yang ditemukan di cabang tersebut.
                     </td>
                 </tr>
                 @endforelse
             </tbody>
         </table>
+    </div>
+
+    <div class="mt-6">
+        {{ $instrukturs->links() }}
     </div>
 </x-app-layout>

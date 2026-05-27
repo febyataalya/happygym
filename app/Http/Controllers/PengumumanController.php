@@ -11,7 +11,7 @@ class PengumumanController extends Controller
 {
     public function index()
     {
-        $pengumumans = Pengumuman::orderBy('tanggal_post', 'desc')->get();
+        $pengumumans = Pengumuman::orderBy('tanggal_post', 'desc')->paginate(15)->withQueryString();
         return view('pengumuman.index', compact('pengumumans'));
     }
 

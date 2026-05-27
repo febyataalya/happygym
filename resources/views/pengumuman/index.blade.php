@@ -42,4 +42,8 @@
             <p class="text-gray-500 italic">Belum ada pengumuman.</p>
         @endforelse
     </div>
+
+    <div class="mt-8">
+        {{ $pengumumans->links() }}
+    </div>
 </x-app-layout>

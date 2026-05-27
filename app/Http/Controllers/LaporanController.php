@@ -64,13 +64,13 @@ class LaporanController extends Controller
             });
         }
 
-        $members = $query->orderBy('created_at', 'desc')->get();
-
-        $totalMember = $members->count();
-        $memberAktif = $members->filter(function($member) {
-            return $member->status_membership == 'Aktif' && $member->tanggal_berakhir_member && \Carbon\Carbon::parse($member->tanggal_berakhir_member)->isFuture();
-        })->count();
+        // Stats before pagination
+        $statsQuery = clone $query;
+        $totalMember = $statsQuery->count();
+        $memberAktif = (clone $statsQuery)->where('status_membership', 'Aktif')->whereDate('tanggal_berakhir_member', '>=', now())->count();
         $memberTidakAktif = $totalMember - $memberAktif;
+
+        $members = $query->orderBy('created_at', 'desc')->paginate(15)->withQueryString();
 
         $pakets = \App\Models\Paket::all();
 
@@ -286,11 +286,12 @@ class LaporanController extends Controller
             });
         }
 
-        $transaksis = $query->orderBy('created_at', 'desc')->get();
+        // Stats and stats collection before pagination
+        $statsQuery = clone $query;
+        $allSettled = (clone $statsQuery)->where('status', 'settlement')->with(['pemesanan.paket'])->get();
+        $totalPendapatan = $allSettled->sum('jumlah');
 
-        $totalPendapatan = $transaksis->where('status', 'settlement')->sum('jumlah');
-
-        $statistikPaket = $transaksis->where('status', 'settlement')
+        $statistikPaket = $allSettled
             ->filter(function($t) { return $t->pemesanan && $t->pemesanan->paket; })
             ->groupBy(function($t) { return $t->pemesanan->paket->nama_paket; })
             ->map(function($group) {
@@ -303,6 +304,8 @@ class LaporanController extends Controller
             ->values();
 
         $maxPaket = $statistikPaket->max('total') ?: 1;
+
+        $transaksis = $query->orderBy('created_at', 'desc')->paginate(15)->withQueryString();
 
         return view('laporan.transaksi', compact('transaksis', 'lokasis', 'totalPendapatan', 'statistikPaket', 'maxPaket'));
     }

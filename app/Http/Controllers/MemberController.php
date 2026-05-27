@@ -57,7 +57,7 @@ class MemberController extends Controller
             $query->where('lokasi_id', $request->lokasi_id);
         }
 
-        $members = $query->get();
+        $members = $query->paginate(15)->withQueryString();
         $lokasis = Lokasi::all();
         $pakets = \App\Models\Paket::all();
 

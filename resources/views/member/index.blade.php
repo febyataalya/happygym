@@ -67,7 +67,7 @@
             <tbody>
                 @forelse ($members as $index => $member)
                 <tr class="border-b border-gray-50 hover:bg-gray-50 transition">
-                    <td class="py-4 px-6 text-gray-600">{{ $index + 1 }}</td>
+                    <td class="py-4 px-6 text-gray-600">{{ $members->firstItem() + $index }}</td>
                     <td class="py-4 px-6 flex justify-center">
                         @if($member->foto)
                             <img src="{{ $member->foto_url }}" alt="Foto" class="w-10 h-10 rounded-full object-cover border border-gray-200">
@@ -128,5 +128,9 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+
+    <div class="mt-6">
+        {{ $members->links() }}
     </div>
 </x-app-layout>

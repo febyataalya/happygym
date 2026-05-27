@@ -120,5 +120,9 @@
                 </table>
             </div>
         </div>
+
+        <div class="mt-6">
+            {{ $transaksis->links() }}
+        </div>
     </div>
 </x-app-layout>
