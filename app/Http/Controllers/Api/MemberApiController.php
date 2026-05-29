@@ -996,6 +996,74 @@ public function getCoachCabang($member_id)
             ], 400);
         }
 
+
+        // =========================
+        // CEK TANGGAL LEWAT
+        // =========================
+
+        if (Carbon::parse($request->tanggal_sesi)
+            ->lt(Carbon::today())) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Tanggal sudah lewat'
+            ], 400);
+        }
+
+        // =========================
+        // CEK KUOTA HARIAN COACH
+        // =========================
+
+        $jumlahBooking = BookingPt::where(
+                'instruktur_id',
+                $paket->instruktur_id
+            )
+            ->whereDate(
+                'tanggal_sesi',
+                $request->tanggal_sesi
+            )
+            ->whereIn('status', [
+                'Pending',
+                'Approved'
+            ])
+            ->count();
+
+        if ($jumlahBooking >= 2) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Jadwal coach sudah penuh'
+            ], 400);
+
+        }
+
+        // =========================
+        // CEK MEMBER SUDAH BOOKING
+        // =========================
+
+        $cekMember = BookingPt::where(
+                'member_paket_id',
+                $request->member_paket_id
+            )
+            ->whereDate(
+                'tanggal_sesi',
+                $request->tanggal_sesi
+            )
+            ->whereIn('status', [
+                'Pending',
+                'Approved'
+            ])
+            ->exists();
+
+        if ($cekMember) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Anda sudah memiliki booking pada tanggal tersebut'
+            ], 400);
+
+        }
+
         // =========================
         // VALIDASI CABANG
         // =========================
