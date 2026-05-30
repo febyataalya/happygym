@@ -732,6 +732,45 @@ public function getCoachCabang($member_id)
         }
 
         // =========================
+        // CEK TANGGAL LEWAT
+        // =========================
+
+        if (Carbon::parse($request->tanggal_sesi)
+            ->lt(Carbon::today())) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Tanggal sudah lewat'
+            ], 400);
+        }
+
+        // =========================
+        // CEK JADWAL COACH PENUH
+        // =========================
+
+        $jumlahBooking = BookingPt::where(
+                'instruktur_id',
+                $paket->instruktur_id
+            )
+            ->whereDate(
+                'tanggal_sesi',
+                $request->tanggal_sesi
+            )
+            ->whereIn('status', [
+                'Pending',
+                'Approved'
+            ])
+            ->count();
+
+        if ($jumlahBooking >= 2) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Jadwal coach sudah penuh'
+            ], 400);
+        }
+
+        // =========================
         // BUAT BOOKING
         // =========================
 
@@ -770,6 +809,42 @@ public function getCoachCabang($member_id)
             'data' => $booking
 
         ], 200);
+
+    }
+
+        public function kalenderInstruktur($instrukturId)
+    {
+        $bookings = BookingPt::where(
+            'instruktur_id',
+            $instrukturId
+        )
+        ->whereIn('status', [
+            'Pending',
+            'Approved'
+        ])
+        ->get();
+
+        $grouped = $bookings->groupBy('tanggal_sesi');
+
+        $result = [];
+
+        foreach ($grouped as $tanggal => $data) {
+
+            $jumlah = count($data);
+
+            $result[] = [
+                'tanggal' => $tanggal,
+                'jumlah_booking' => $jumlah,
+                'status' => $jumlah >= 3
+                    ? 'full'
+                    : 'available'
+            ];
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $result
+        ]);
     }
 
     public function tanggapanNegosiasiPt(Request $request)
