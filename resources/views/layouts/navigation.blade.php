@@ -49,7 +49,13 @@
                 </button>
                 <div x-show="open" style="display: {{ request()->is('laporan*') ? 'block' : 'none' }};" class="mt-1 pl-4 space-y-1">
                     <a href="{{ url('/laporan/member') }}" class="block py-2 px-4 rounded-lg transition duration-200 text-sm {{ request()->is('laporan/member*') ? 'text-[#db3535] font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-[#db3535]' }}">
-                        Laporan Member
+                        Laporan Member Bulanan
+                    </a>
+                    <a href="{{ url('/laporan/kehadiran') }}" class="block py-2 px-4 rounded-lg transition duration-200 text-sm {{ request()->is('laporan/kehadiran*') ? 'text-[#db3535] font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-[#db3535]' }}">
+                        Laporan Kehadiran
+                    </a>
+                    <a href="{{ url('/laporan/pt') }}" class="block py-2 px-4 rounded-lg transition duration-200 text-sm {{ request()->is('laporan/pt*') ? 'text-[#db3535] font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-[#db3535]' }}">
+                        Laporan PT
                     </a>
                     <a href="{{ url('/laporan/transaksi') }}" class="block py-2 px-4 rounded-lg transition duration-200 text-sm {{ request()->is('laporan/transaksi*') ? 'text-[#db3535] font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-[#db3535]' }}">
                         Laporan Transaksi

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Member;
 use App\Models\Pembayaran;
 use App\Models\Lokasi;
+use App\Models\Instruktur;
+use App\Models\KunjunganGym;
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Maatwebsite\Excel\Facades\Excel;
@@ -285,6 +287,18 @@ class LaporanController extends Controller
                 $q->where('lokasi_id', $request->lokasi_id);
             });
         }
+        if ($request->filled('jenis_transaksi')) {
+            $jenis = $request->jenis_transaksi;
+            $query->whereHas('pemesanan.paket', function($q) use ($jenis) {
+                if ($jenis == 'Harian') {
+                    $q->where('jenis', 'One Day Pass');
+                } elseif ($jenis == 'Bulanan') {
+                    $q->where('jenis', 'Membership Bulanan');
+                } elseif ($jenis == 'PT') {
+                    $q->where('jenis', 'Personal Training');
+                }
+            });
+        }
 
         // Stats and stats collection before pagination
         $statsQuery = clone $query;
@@ -338,6 +352,22 @@ class LaporanController extends Controller
             $filterText[] = "Cabang: " . ($lokasi ? $lokasi->nama_cabang : $request->lokasi_id);
         } else {
             $filterText[] = "Cabang: Semua";
+        }
+
+        if ($request->filled('jenis_transaksi')) {
+            $jenis = $request->jenis_transaksi;
+            $query->whereHas('pemesanan.paket', function($q) use ($jenis) {
+                if ($jenis == 'Harian') {
+                    $q->where('jenis', 'One Day Pass');
+                } elseif ($jenis == 'Bulanan') {
+                    $q->where('jenis', 'Membership Bulanan');
+                } elseif ($jenis == 'PT') {
+                    $q->where('jenis', 'Personal Training');
+                }
+            });
+            $filterText[] = "Jenis: " . $jenis;
+        } else {
+            $filterText[] = "Jenis: Semua";
         }
 
         $data = $query->orderBy('created_at', 'desc')->get();
@@ -428,11 +458,332 @@ class LaporanController extends Controller
             $lokasi = Lokasi::find($request->lokasi_id);
             $filterText[] = "Cabang: " . ($lokasi ? $lokasi->nama_cabang : $request->lokasi_id);
         }
+        if ($request->filled('jenis_transaksi')) {
+            $jenis = $request->jenis_transaksi;
+            $query->whereHas('pemesanan.paket', function($q) use ($jenis) {
+                if ($jenis == 'Harian') {
+                    $q->where('jenis', 'One Day Pass');
+                } elseif ($jenis == 'Bulanan') {
+                    $q->where('jenis', 'Membership Bulanan');
+                } elseif ($jenis == 'PT') {
+                    $q->where('jenis', 'Personal Training');
+                }
+            });
+            $filterText[] = "Jenis: " . $jenis;
+        }
 
         $transaksis = $query->orderBy('created_at', 'desc')->get();
         $filterString = count($filterText) > 0 ? implode(' | ', $filterText) : "Semua Data";
 
         $pdf = Pdf::loadView('transaksi.pdf', compact('transaksis', 'filterString'))->setPaper('a4', 'landscape');
         return $pdf->download('laporan_transaksi_'.date('YmdHis').'.pdf');
+    }
+
+    // ==========================================
+    // LAPORAN PT (PERSONAL TRAINER)
+    // ==========================================
+    public function ptIndex(Request $request)
+    {
+        $lokasis = Lokasi::all();
+        $query = Instruktur::with(['lokasi'])->withCount(['memberPaketPts as active_clients_count' => function($q) {
+            $q->where('status', 'Aktif');
+        }]);
+
+        if ($request->filled('lokasi_id')) {
+            $query->where('lokasi_id', $request->lokasi_id);
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('nama', 'like', "%{$search}%")
+                  ->orWhere('spesialisasi', 'like', "%{$search}%");
+            });
+        }
+
+        // Stats before pagination
+        $statsQuery = clone $query;
+        $totalPt = $statsQuery->count();
+        
+        $pts = $query->orderBy('nama', 'asc')->paginate(15)->withQueryString();
+
+        return view('laporan.pt', compact('pts', 'lokasis', 'totalPt'));
+    }
+
+    public function exportPtExcel(Request $request)
+    {
+        $query = Instruktur::with(['lokasi'])->withCount(['memberPaketPts as active_clients_count' => function($q) {
+            $q->where('status', 'Aktif');
+        }]);
+        
+        $filterText = [];
+        if ($request->filled('lokasi_id')) {
+            $query->where('lokasi_id', $request->lokasi_id);
+            $lokasi = Lokasi::find($request->lokasi_id);
+            $filterText[] = "Cabang: " . ($lokasi ? $lokasi->nama_cabang : $request->lokasi_id);
+        } else {
+            $filterText[] = "Cabang: Semua";
+        }
+        
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('nama', 'like', "%{$search}%")
+                  ->orWhere('spesialisasi', 'like', "%{$search}%");
+            });
+            $filterText[] = "Pencarian: " . $search;
+        }
+
+        $pts = $query->orderBy('nama', 'asc')->get();
+        $filterString = implode(' | ', $filterText);
+
+        return Excel::download(new class($pts, $filterString) implements FromCollection, WithHeadings, WithMapping, WithCustomStartCell, WithEvents {
+            private $pts;
+            private $filterString;
+
+            public function __construct($pts, $filterString) {
+                $this->pts = $pts;
+                $this->filterString = $filterString;
+            }
+
+            public function collection() {
+                return $this->pts;
+            }
+
+            public function startCell(): string {
+                return 'A4';
+            }
+
+            public function registerEvents(): array {
+                return [
+                    BeforeSheet::class => function(BeforeSheet $event) {
+                        $event->sheet->setCellValue('A1', 'LAPORAN DATA PERSONAL TRAINER (PT)');
+                        $event->sheet->setCellValue('A2', $this->filterString);
+                        $event->sheet->mergeCells('A1:G1');
+                        $event->sheet->mergeCells('A2:G2');
+                    }
+                ];
+            }
+
+            public function headings(): array {
+                return [
+                    'No',
+                    'Nama PT',
+                    'Username',
+                    'Spesialisasi',
+                    'Cabang',
+                    'Jumlah Client Aktif',
+                    'Rating Rata-rata'
+                ];
+            }
+
+            public function map($pt): array {
+                static $row = 0;
+                $row++;
+
+                return [
+                    $row,
+                    $pt->nama,
+                    $pt->username,
+                    $pt->spesialisasi ?? '-',
+                    $pt->lokasi->nama_cabang ?? '-',
+                    $pt->active_clients_count,
+                    $pt->rating_avg
+                ];
+            }
+        }, 'laporan_pt_'.date('Ymd_His').'.xlsx');
+    }
+
+    public function exportPtPdf(Request $request)
+    {
+        $query = Instruktur::with(['lokasi'])->withCount(['memberPaketPts as active_clients_count' => function($q) {
+            $q->where('status', 'Aktif');
+        }]);
+        $filterText = [];
+        
+        if ($request->filled('lokasi_id')) {
+            $query->where('lokasi_id', $request->lokasi_id);
+            $lokasi = Lokasi::find($request->lokasi_id);
+            $filterText[] = "Cabang: " . ($lokasi ? $lokasi->nama_cabang : $request->lokasi_id);
+        }
+        
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('nama', 'like', "%{$search}%")
+                  ->orWhere('spesialisasi', 'like', "%{$search}%");
+            });
+            $filterText[] = "Pencarian: " . $search;
+        }
+
+        $pts = $query->orderBy('nama', 'asc')->get();
+        $filterString = count($filterText) > 0 ? implode(' | ', $filterText) : "Semua Data";
+
+        $pdf = Pdf::loadView('laporan.pt_pdf', compact('pts', 'filterString'));
+        return $pdf->download('laporan_pt_'.date('Ymd_His').'.pdf');
+    }
+
+    // ==========================================
+    // LAPORAN KEHADIRAN MEMBER
+    // ==========================================
+    public function kehadiranIndex(Request $request)
+    {
+        $lokasis = Lokasi::all();
+        $query = KunjunganGym::with(['member', 'lokasi']);
+
+        if ($request->filled('lokasi_id')) {
+            $query->where('lokasi_id', $request->lokasi_id);
+        }
+
+        if ($request->filled('tanggal_mulai')) {
+            $query->whereDate('tanggal', '>=', $request->tanggal_mulai);
+        }
+
+        if ($request->filled('tanggal_selesai')) {
+            $query->whereDate('tanggal', '<=', $request->tanggal_selesai);
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->whereHas('member', function($q) use ($search) {
+                $q->where('nama', 'like', "%{$search}%");
+            });
+        }
+
+        // Stats before pagination
+        $statsQuery = clone $query;
+        $totalKehadiran = $statsQuery->count();
+
+        $kehadirans = $query->orderBy('tanggal', 'desc')
+                            ->orderBy('waktu_masuk', 'desc')
+                            ->paginate(15)
+                            ->withQueryString();
+
+        return view('laporan.kehadiran', compact('kehadirans', 'lokasis', 'totalKehadiran'));
+    }
+
+    public function exportKehadiranExcel(Request $request)
+    {
+        $query = KunjunganGym::with(['member', 'lokasi']);
+        
+        $filterText = [];
+        if ($request->filled('lokasi_id')) {
+            $query->where('lokasi_id', $request->lokasi_id);
+            $lokasi = Lokasi::find($request->lokasi_id);
+            $filterText[] = "Cabang: " . ($lokasi ? $lokasi->nama_cabang : $request->lokasi_id);
+        } else {
+            $filterText[] = "Cabang: Semua";
+        }
+        
+        if ($request->filled('tanggal_mulai')) {
+            $query->whereDate('tanggal', '>=', $request->tanggal_mulai);
+            $filterText[] = "Dari: " . $request->tanggal_mulai;
+        }
+        if ($request->filled('tanggal_selesai')) {
+            $query->whereDate('tanggal', '<=', $request->tanggal_selesai);
+            $filterText[] = "Sampai: " . $request->tanggal_selesai;
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->whereHas('member', function($q) use ($search) {
+                $q->where('nama', 'like', "%{$search}%");
+            });
+            $filterText[] = "Pencarian: " . $search;
+        }
+
+        $kehadirans = $query->orderBy('tanggal', 'desc')->orderBy('waktu_masuk', 'desc')->get();
+        $filterString = implode(' | ', $filterText);
+
+        return Excel::download(new class($kehadirans, $filterString) implements FromCollection, WithHeadings, WithMapping, WithCustomStartCell, WithEvents {
+            private $kehadirans;
+            private $filterString;
+
+            public function __construct($kehadirans, $filterString) {
+                $this->kehadirans = $kehadirans;
+                $this->filterString = $filterString;
+            }
+
+            public function collection() {
+                return $this->kehadirans;
+            }
+
+            public function startCell(): string {
+                return 'A4';
+            }
+
+            public function registerEvents(): array {
+                return [
+                    BeforeSheet::class => function(BeforeSheet $event) {
+                        $event->sheet->setCellValue('A1', 'LAPORAN KEHADIRAN MEMBER');
+                        $event->sheet->setCellValue('A2', $this->filterString);
+                        $event->sheet->mergeCells('A1:G1');
+                        $event->sheet->mergeCells('A2:G2');
+                    }
+                ];
+            }
+
+            public function headings(): array {
+                return [
+                    'No',
+                    'Tanggal',
+                    'Nama Member',
+                    'Cabang',
+                    'Waktu Masuk',
+                    'Waktu Keluar',
+                    'Status'
+                ];
+            }
+
+            public function map($k): array {
+                static $row = 0;
+                $row++;
+
+                return [
+                    $row,
+                    Carbon::parse($k->tanggal)->format('d/m/Y'),
+                    $k->member->nama ?? '-',
+                    $k->lokasi->nama_cabang ?? '-',
+                    $k->waktu_masuk ?? '-',
+                    $k->waktu_keluar ?? '-',
+                    $k->status_kunjungan
+                ];
+            }
+        }, 'laporan_kehadiran_'.date('Ymd_His').'.xlsx');
+    }
+
+    public function exportKehadiranPdf(Request $request)
+    {
+        $query = KunjunganGym::with(['member', 'lokasi']);
+        $filterText = [];
+        
+        if ($request->filled('lokasi_id')) {
+            $query->where('lokasi_id', $request->lokasi_id);
+            $lokasi = Lokasi::find($request->lokasi_id);
+            $filterText[] = "Cabang: " . ($lokasi ? $lokasi->nama_cabang : $request->lokasi_id);
+        }
+        
+        if ($request->filled('tanggal_mulai')) {
+            $query->whereDate('tanggal', '>=', $request->tanggal_mulai);
+            $filterText[] = "Dari: " . $request->tanggal_mulai;
+        }
+        if ($request->filled('tanggal_selesai')) {
+            $query->whereDate('tanggal', '<=', $request->tanggal_selesai);
+            $filterText[] = "Sampai: " . $request->tanggal_selesai;
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->whereHas('member', function($q) use ($search) {
+                $q->where('nama', 'like', "%{$search}%");
+            });
+            $filterText[] = "Pencarian: " . $search;
+        }
+
+        $kehadirans = $query->orderBy('tanggal', 'desc')->orderBy('waktu_masuk', 'desc')->get();
+        $filterString = count($filterText) > 0 ? implode(' | ', $filterText) : "Semua Data";
+
+        $pdf = Pdf::loadView('laporan.kehadiran_pdf', compact('kehadirans', 'filterString'));
+        return $pdf->download('laporan_kehadiran_'.date('Ymd_His').'.pdf');
     }
 }

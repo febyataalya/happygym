@@ -16,4 +16,14 @@ class KunjunganGym extends Model
         'waktu_keluar', 
         'status_kunjungan'
     ];
+
+    public function member()
+    {
+        return $this->belongsTo(Member::class, 'member_id', 'member_id');
+    }
+
+    public function lokasi()
+    {
+        return $this->belongsTo(Lokasi::class, 'lokasi_id', 'lokasi_id');
+    }
 }

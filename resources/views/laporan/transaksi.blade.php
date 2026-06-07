@@ -19,7 +19,7 @@
         <!-- Filter Row -->
         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
             <h3 class="text-lg font-semibold text-gray-700 mb-4">Filter Laporan</h3>
-            <form action="{{ route('laporan.transaksi') }}" method="GET" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end mb-6">
+            <form action="{{ route('laporan.transaksi') }}" method="GET" class="grid grid-cols-1 md:grid-cols-6 gap-4 items-end mb-6">
                 <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Tanggal Mulai</label>
                     <input type="date" name="tanggal_mulai" value="{{ request('tanggal_mulai') }}" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-[#e45151] focus:border-[#e45151] text-sm">
@@ -47,11 +47,20 @@
                         @endforeach
                     </select>
                 </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Jenis Transaksi</label>
+                    <select name="jenis_transaksi" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-[#e45151] focus:border-[#e45151] text-sm">
+                        <option value="">Semua Jenis</option>
+                        <option value="Harian" {{ request('jenis_transaksi') == 'Harian' ? 'selected' : '' }}>Harian (One Day Pass)</option>
+                        <option value="Bulanan" {{ request('jenis_transaksi') == 'Bulanan' ? 'selected' : '' }}>Bulanan (Membership)</option>
+                        <option value="PT" {{ request('jenis_transaksi') == 'PT' ? 'selected' : '' }}>Personal Training (PT)</option>
+                    </select>
+                </div>
                 <div class="flex gap-2">
                     <button type="submit" class="bg-[#e45151] hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow-sm transition text-sm flex-1">
                         Filter
                     </button>
-                    @if(request()->anyFilled(['tanggal_mulai', 'tanggal_selesai', 'status', 'lokasi_id']))
+                    @if(request()->anyFilled(['tanggal_mulai', 'tanggal_selesai', 'status', 'lokasi_id', 'jenis_transaksi']))
                         <a href="{{ route('laporan.transaksi') }}" class="bg-gray-200 hover:bg-gray-300 text-gray-600 font-bold py-2 px-4 rounded shadow-sm transition text-sm flex items-center justify-center">
                             Reset
                         </a>
@@ -77,7 +86,7 @@
                             <th class="py-4 px-6 font-bold text-gray-600 uppercase text-xs tracking-wider">ORDER ID</th>
                             <th class="py-4 px-6 font-bold text-gray-600 uppercase text-xs tracking-wider">TANGGAL</th>
                             <th class="py-4 px-6 font-bold text-gray-600 uppercase text-xs tracking-wider">MEMBER / CABANG</th>
-                            <th class="py-4 px-6 font-bold text-gray-600 uppercase text-xs tracking-wider">PAKET</th>
+                            <th class="py-4 px-6 font-bold text-gray-600 uppercase text-xs tracking-wider">PAKET & JENIS</th>
                             <th class="py-4 px-6 font-bold text-gray-600 uppercase text-xs tracking-wider">JUMLAH</th>
                             <th class="py-4 px-6 font-bold text-gray-600 uppercase text-xs tracking-wider text-center">STATUS</th>
                             <th class="py-4 px-6 font-bold text-gray-600 uppercase text-xs tracking-wider text-center">METODE</th>
@@ -92,7 +101,27 @@
                                 <div class="font-bold text-gray-800">{{ $t->member->nama ?? '-' }}</div>
                                 <div class="text-[10px] text-gray-500 font-bold uppercase">{{ $t->member->lokasi->nama_cabang ?? '-' }}</div>
                             </td>
-                            <td class="py-4 px-6 text-sm text-gray-600">{{ $t->pemesanan->paket->nama_paket ?? '-' }}</td>
+                            <td class="py-4 px-6">
+                                <div class="text-sm font-semibold text-gray-700">{{ $t->pemesanan->paket->nama_paket ?? '-' }}</div>
+                                @if($t->pemesanan && $t->pemesanan->paket)
+                                    @php
+                                        $jenisText = [
+                                            'One Day Pass' => 'Harian',
+                                            'Membership Bulanan' => 'Bulanan',
+                                            'Personal Training' => 'PT / Trainer'
+                                        ][$t->pemesanan->paket->jenis] ?? $t->pemesanan->paket->jenis;
+                                        
+                                        $jenisColor = [
+                                            'One Day Pass' => 'bg-indigo-50 text-indigo-700 border border-indigo-200',
+                                            'Membership Bulanan' => 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+                                            'Personal Training' => 'bg-amber-50 text-amber-700 border border-amber-200'
+                                        ][$t->pemesanan->paket->jenis] ?? 'bg-gray-50 text-gray-700 border border-gray-200';
+                                    @endphp
+                                    <span class="inline-block px-2 py-0.5 mt-1 rounded text-[10px] font-bold uppercase {{ $jenisColor }}">
+                                        {{ $jenisText }}
+                                    </span>
+                                @endif
+                            </td>
                             <td class="py-4 px-6 font-bold">Rp {{ number_format($t->jumlah, 0, ',', '.') }}</td>
                             <td class="py-4 px-6 text-center">
                                 @php

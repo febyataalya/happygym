@@ -44,5 +44,13 @@ Route::get('/laporan/member/export/pdf', [\App\Http\Controllers\LaporanControlle
 Route::get('/laporan/transaksi', [\App\Http\Controllers\LaporanController::class, 'transaksiIndex'])->name('laporan.transaksi');
 Route::get('/laporan/transaksi/export/excel', [\App\Http\Controllers\LaporanController::class, 'exportTransaksiExcel'])->name('laporan.transaksi.export.excel');
 Route::get('/laporan/transaksi/export/pdf', [\App\Http\Controllers\LaporanController::class, 'exportTransaksiPdf'])->name('laporan.transaksi.export.pdf');
+
+Route::get('/laporan/pt', [\App\Http\Controllers\LaporanController::class, 'ptIndex'])->name('laporan.pt');
+Route::get('/laporan/pt/export/excel', [\App\Http\Controllers\LaporanController::class, 'exportPtExcel'])->name('laporan.pt.export.excel');
+Route::get('/laporan/pt/export/pdf', [\App\Http\Controllers\LaporanController::class, 'exportPtPdf'])->name('laporan.pt.export.pdf');
+
+Route::get('/laporan/kehadiran', [\App\Http\Controllers\LaporanController::class, 'kehadiranIndex'])->name('laporan.kehadiran');
+Route::get('/laporan/kehadiran/export/excel', [\App\Http\Controllers\LaporanController::class, 'exportKehadiranExcel'])->name('laporan.kehadiran.export.excel');
+Route::get('/laporan/kehadiran/export/pdf', [\App\Http\Controllers\LaporanController::class, 'exportKehadiranPdf'])->name('laporan.kehadiran.export.pdf');
 Route::resource('lokasi', LokasiController::class);
 require __DIR__.'/auth.php';
